@@ -18,6 +18,7 @@ import {
 } from './runtime/value';
 import { registerStdlib } from './runtime/stdlib';
 import { spawnAgent, hotUpdateAgent, AgentSpawnConfig } from './runtime/agent';
+import { parse } from './parser';
 
 // ─── Helper: extract message type + args from a message value ─
 
@@ -164,6 +165,14 @@ export class Interpreter {
         return call(fn, [opt.fields[0]]);
       return opt;
     }));
+
+    // Async timing
+    this.globalEnv.define('sleep', mkNativeAsync('sleep', async (ms) => {
+      const millis = ms?.tag === ValueTag.Int ? Number(ms.value)
+                   : ms?.tag === ValueTag.Float ? ms.value : 0;
+      await new Promise(resolve => setTimeout(resolve, millis));
+      return UNIT;
+    }));
   }
 
   // ── Execute Program ───────────────────────────────────────
@@ -212,6 +221,51 @@ export class Interpreter {
     }
 
     return { modules: 1, fns, agents };
+  }
+
+  // ── REPL evaluation ──────────────────────────────────────
+  // Returns the result value (Unit if nothing to show), or throws.
+  async replExec(input: string): Promise<AxonValue> {
+    const trimmed = input.trim();
+    if (!trimmed) return UNIT;
+
+    // ── Declaration: fn / type / agent / const ─────────────
+    if (/^(fn|type|agent|const)\s/.test(trimmed)) {
+      const program = parse(`module REPL\n${trimmed}`);
+      for (const item of program.items) this.registerTopLevel(item);
+      // Evaluate const initializers
+      for (const item of program.items) {
+        if (item.kind === 'ConstDecl') {
+          const val = await this.evalExpr(item.value, this.globalEnv);
+          this.globalEnv.define(item.name, val, true);
+        }
+      }
+      return UNIT;
+    }
+
+    // ── Let binding: persist to global env ─────────────────
+    const letMatch = trimmed.match(/^let\s+(?:mut\s+)?(\w+)(?:\s*:\s*[^\s=][^=]*)?\s*=\s*([\s\S]+)$/);
+    if (letMatch) {
+      const [, name, exprSrc] = letMatch;
+      // Wrap to evaluate the RHS expression
+      const program = parse(`module REPL\nfn __repl__() {\n${trimmed}\n${name}\n}`);
+      this.registerTopLevel(program.items[0]);
+      const fn = this.globalEnv.tryGet('__repl__');
+      if (fn) {
+        const result = await this.callValueAsync(fn, []);
+        this.globalEnv.define(name, result, true);
+        return result;
+      }
+      return UNIT;
+    }
+
+    // ── Bare expression or statement ───────────────────────
+    // Wrap in a function, call it, return the value
+    const program = parse(`module REPL\nfn __repl__() {\n${trimmed}\n}`);
+    this.registerTopLevel(program.items[0]);
+    const fn = this.globalEnv.tryGet('__repl__');
+    if (fn) return this.callValueAsync(fn, []);
+    return UNIT;
   }
 
   private registerTopLevel(item: TopLevel): void {

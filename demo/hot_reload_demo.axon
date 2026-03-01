@@ -5,59 +5,52 @@
 // 运行方法:
 //   axon run demo/hot_reload_demo.axon --watch
 //
-// 然后修改 greetMessage 函数或 tickInterval，保存，观察输出变化！
+// 然后修改下面标注 🔥 的函数，保存文件，立刻看到输出变化！
+//
+// ✅ 可以热更新：greetMessage、formatTick（普通函数）
+// ✅ 可以热更新：TickAgent 的 on Tick 处理器
+// ❌ 不能热更新：main() 本身（修改 main 需要重启才生效）
 // ============================================================
 
 module Demo.HotReload
 
-// 🔥 修改这个函数，保存文件，看到输出立即变化！
+// 🔥 试试修改这段文字，保存后立刻看到变化！
 fn greetMessage(n: Int) -> String {
-    "Tick #" + str(n) + " — Axon is running! (edit this message and save)"
+    "Hello from Axon! Tick #" + str(n)
 }
 
-// 🔥 修改这个来改变消息格式
+// 🔥 修改这里改变输出格式
 fn formatTick(n: Int, msg: String) -> String {
-    "[" + str(n) + "] " + msg
+    "[tick " + str(n) + "] " + msg
 }
 
 agent TickAgent {
     state {
         tick: Int = 0
-        messages: List<String> = []
     }
 
+    // 🔥 修改这个 handler，保存后立刻生效
     on Tick -> String {
         tick = tick + 1
         let msg = greetMessage(tick)
-        let formatted = formatTick(tick, msg)
-        messages = list_append(messages, formatted)
-        formatted
+        formatTick(tick, msg)
     }
 
     on GetTick -> Int = tick
-    on GetMessages -> List<String> = messages
 }
 
 fn main() -> Unit {
-    print("=== Hot Reload Demo ===")
-    print("Tip: Edit greetMessage() or formatTick() and save the file!")
-    print("The running agent will update immediately without restart.")
+    print("=== Axon Hot Reload Demo ===")
+    print("Edit greetMessage() or formatTick() and save — changes apply instantly!")
+    print("Press Ctrl+C to stop.")
     print("")
 
     let agent = spawn TickAgent
 
-    // Run 3 ticks and show output
-    let msg1 = agent.ask(Tick)
-    print(msg1)
-
-    let msg2 = agent.ask(Tick)
-    print(msg2)
-
-    let msg3 = agent.ask(Tick)
-    print(msg3)
-
-    print("")
-    print("Total ticks: " + str(agent.ask(GetTick)))
-    print("")
-    print("In --watch mode: edit this file, save, and see the change!")
+    // 每秒打印一次，持续运行直到 Ctrl+C
+    loop {
+        let result = agent.ask(Tick)
+        print(result)
+        sleep(1000)
+    }
 }

@@ -10,7 +10,7 @@ import { LexError } from './lexer';
 import { typeCheck, Diagnostic } from './checker';
 import { Interpreter } from './interpreter';
 import { HotReloadManager, createDefaultLogger } from './hot_reload';
-import { RuntimeError } from './runtime/value';
+import { RuntimeError, ValueTag, displayValue } from './runtime/value';
 
 // ─── Colors ──────────────────────────────────────────────────
 
@@ -178,7 +178,7 @@ async function startRepl(): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: c('cyan', 'axon> ') });
 
   printBanner();
-  console.log(c('gray', 'Interactive REPL. Type :quit to exit, :help for commands.\n'));
+  console.log(c('gray', 'Interactive REPL. Type :help for commands, :quit to exit.\n'));
 
   const interpreter = new Interpreter();
   let   lineBuffer  = '';
@@ -188,69 +188,80 @@ async function startRepl(): Promise<void> {
   rl.on('line', async (line: string) => {
     const trimmed = line.trim();
 
-    // REPL commands
+    // ── REPL meta-commands ────────────────────────────────────
     if (trimmed === ':quit' || trimmed === ':q') {
-      console.log(c('gray', 'Goodbye!'));
-      process.exit(0);
+      console.log(c('gray', 'Goodbye!')); process.exit(0);
     }
     if (trimmed === ':help' || trimmed === ':h') {
       console.log(`
-  ${c('cyan', 'Axon REPL Commands:')}
-  :quit, :q     Exit
-  :help, :h     Show this help
-  :env          Show all bindings
-  :clear        Clear environment
+  ${c('cyan', 'Commands:')}
+  :quit  :q      Exit the REPL
+  :help  :h      Show this help
+  :clear         Reset environment
 
-  ${c('cyan', 'Axon expressions:')}
-  let x = 42                    Define variable
-  fn add(a, b) = a + b         Define function
-  print("hello")                Call function
-  [1, 2, 3] |> list_map(|x| x * 2)  Pipe operator
+  ${c('cyan', 'Examples:')}
+  1 + 2 * 3                          ${c('gray', '=> 7')}
+  let x = 42                         ${c('gray', '=> 42')}
+  x * 2                              ${c('gray', '=> 84')}
+  fn double(n: Int) = n * 2         ${c('gray', '=> defined: double')}
+  double(x)                          ${c('gray', '=> 84')}
+  [1,2,3,4,5] |> list_filter(|n| n > 2)  ${c('gray', '=> [3, 4, 5]')}
+  "hello" + " world"                 ${c('gray', '=> "hello world"')}
 `);
-      rl.prompt();
-      return;
+      rl.prompt(); return;
+    }
+    if (trimmed === ':clear') {
+      console.log(c('gray', 'Environment cleared.'));
+      lineBuffer = '';
+      rl.prompt(); return;
     }
 
     lineBuffer += line + '\n';
 
-    // Try to evaluate
+    // Check for incomplete multi-line input (unmatched braces/parens)
+    let braceDepth = 0, parenDepth = 0;
+    for (const ch of lineBuffer) {
+      if (ch === '{') braceDepth++;
+      if (ch === '}') braceDepth--;
+      if (ch === '(') parenDepth++;
+      if (ch === ')') parenDepth--;
+    }
+    if (braceDepth > 0 || parenDepth > 0) {
+      process.stdout.write(c('gray', '... '));
+      rl.prompt(); return;
+    }
+
+    // ── Evaluate ─────────────────────────────────────────────
     try {
-      // Wrap in module if no module declaration
-      const src = lineBuffer.trim().startsWith('module') ? lineBuffer : `module REPL\n${lineBuffer}`;
-      const program = parse(src);
-
-      // Check for incomplete input (unmatched braces)
-      let braceDepth = 0;
-      for (const ch of lineBuffer) {
-        if (ch === '{') braceDepth++;
-        if (ch === '}') braceDepth--;
-      }
-      if (braceDepth > 0) {
-        process.stdout.write(c('gray', '... '));
-        rl.prompt();
-        return;
-      }
-
-      // Execute
-      await interpreter.execute(program);
+      const input = lineBuffer.trim();
       lineBuffer = '';
 
+      const result = await interpreter.replExec(input);
+
+      // Print result if not Unit
+      if (result.tag !== ValueTag.Unit) {
+        console.log(c('green', '=> ') + displayValue(result));
+      } else if (/^(fn|type|agent|const)\s/.test(input)) {
+        // Declaration: show what was defined
+        const nameMatch = input.match(/^(?:fn|type|agent|const)\s+(\w+)/);
+        if (nameMatch) console.log(c('green', `defined: ${nameMatch[1]}`));
+      }
+
     } catch (e) {
-      if (e instanceof ParseError && e.message.includes('Unexpected token')) {
-        // Might be incomplete - continue reading
+      if (e instanceof ParseError) {
+        console.error(c('red', `Parse error: `) + e.message);
       } else {
         const msg = e instanceof Error ? e.message : String(e);
-        console.error(c('red', `Error: ${msg}`));
-        lineBuffer = '';
+        console.error(c('red', `Error: `) + msg);
       }
+      lineBuffer = '';
     }
 
     rl.prompt();
   });
 
   rl.on('close', () => {
-    console.log(c('gray', '\nGoodbye!'));
-    process.exit(0);
+    console.log(c('gray', '\nGoodbye!')); process.exit(0);
   });
 }
 
