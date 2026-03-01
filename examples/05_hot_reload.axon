@@ -1,0 +1,255 @@
+// ============================================================
+// Axon 语言示例 05：热更新演示
+// ============================================================
+
+// 这个文件展示了 AI 如何在不重启服务的情况下，
+// 不断改进和部署运行中的代码。
+
+// ============================================================
+// 场景：一个正在运行的推荐系统 Agent
+// ============================================================
+
+// === 版本 1：最初的实现 ===
+
+#[hot]
+module RecommendationEngine
+
+type Item    = { id: String, tags: List<String>, score: Float }
+type UserCtx = { user_id: String, history: List<String>, preferences: List<String> }
+
+// 版本 1：简单的基于标签的推荐
+agent Recommender {
+    state {
+        items:    List<Item>               = []
+        cache:    Map<String, List<Item>>  = Map.empty()
+        version:  Int                      = 1
+    }
+
+    on LoadItems(new_items: List<Item>) -> Int {
+        items = new_items
+        cache = Map.empty()  // 清除缓存
+        items |> List.len()
+    }
+
+    on Recommend(ctx: UserCtx, limit: Int) -> List<Item> {
+        // V1：简单按 score 排序，取 Top-N
+        match cache.get(ctx.user_id) {
+            Some(cached) => cached |> List.take(limit)
+            None => {
+                let recs = items
+                    |> List.sort_by(|i| -i.score)  // 降序
+                    |> List.take(limit)
+                cache = cache |> Map.insert(ctx.user_id, recs)
+                recs
+            }
+        }
+    }
+
+    on GetVersion -> Int = version
+    on GetStats   -> Map<String, Int> {
+        Map.from([("items", items |> List.len()), ("cached", cache |> Map.len())])
+    }
+}
+
+// ============================================================
+// AI 改进了推荐算法（不重启，热更新）
+// ============================================================
+
+// === 版本 2：AI 添加了用户偏好匹配 ===
+// AI 发现推荐效果不好，修改了 Recommend 逻辑
+
+// 新的状态：增加了点击统计
+// 需要声明状态迁移
+
+migrate Recommender.State {
+    from V1 {
+        items:   List<Item>
+        cache:   Map<String, List<Item>>
+        version: Int
+    }
+    to V2 {
+        items:        List<Item>
+        cache:        Map<String, List<Item>>
+        version:      Int
+        click_counts: Map<String, Int>   // 新增：点击计数
+    }
+    with |old| {
+        items:        old.items,
+        cache:        old.cache,
+        version:      2,                 // 版本号自动升级
+        click_counts: Map.empty()        // 新字段初始化为空
+    }
+}
+
+// 更新后的 Recommender（V2 逻辑）
+// 注意：这整个 agent 块会替换正在运行的 Recommender 代码
+// 但所有实例的状态已通过 migrate 迁移到 V2 格式
+
+agent Recommender {
+    state {
+        items:        List<Item>              = []
+        cache:        Map<String, List<Item>> = Map.empty()
+        version:      Int                     = 2
+        click_counts: Map<String, Int>        = Map.empty()
+    }
+
+    on LoadItems(new_items: List<Item>) -> Int {
+        items = new_items
+        cache = Map.empty()
+        items |> List.len()
+    }
+
+    on Recommend(ctx: UserCtx, limit: Int) -> List<Item> {
+        // V2：结合用户偏好和点击历史进行个性化排序
+        match cache.get(ctx.user_id) {
+            Some(cached) => cached |> List.take(limit)
+            None => {
+                let recs = items
+                    |> List.map(|item| {
+                        let tag_match = countTagMatches(item.tags, ctx.preferences)
+                        let boost     = click_counts.get(item.id).unwrap_or(0) |> Float.from()
+                        let adj_score = item.score * (1.0 + 0.1 * tag_match) + 0.01 * boost
+                        (item, adj_score)
+                    })
+                    |> List.sort_by(|(_, score)| -score)
+                    |> List.map(|(item, _)| item)
+                    |> List.take(limit)
+                cache = cache |> Map.insert(ctx.user_id, recs)
+                recs
+            }
+        }
+    }
+
+    on RecordClick(item_id: String) -> Unit {
+        // V2 新增：记录点击以改善推荐
+        let prev = click_counts.get(item_id).unwrap_or(0)
+        click_counts = click_counts |> Map.insert(item_id, prev + 1)
+        cache = Map.empty()  // 点击后使缓存失效
+    }
+
+    on GetVersion -> Int = version
+
+    on GetStats -> Map<String, Int> {
+        let total_clicks = click_counts
+            |> Map.values()
+            |> List.sum()
+        Map.from([
+            ("items",        items        |> List.len()),
+            ("cached",       cache        |> Map.len()),
+            ("total_clicks", total_clicks)
+        ])
+    }
+
+    priv fn countTagMatches(item_tags: List<String>, pref_tags: List<String>) -> Float {
+        let matches = item_tags |> List.filter(|t| pref_tags.contains(t)) |> List.len()
+        matches |> Float.from()
+    }
+}
+
+// ============================================================
+// 热更新触发器：监听文件变化
+// ============================================================
+
+fn startWithHotReload() -> Unit | IO, Async {
+    // 启动推荐引擎
+    let recommender = spawn Recommender
+
+    // 加载初始数据
+    let items = await loadItemsFromDB()?
+    let count = await recommender.ask(LoadItems(items))
+    Log.info("Loaded {count} items into Recommender v{await recommender.ask(GetVersion)}")
+
+    // 启动文件监听（开发模式）
+    if Config.dev_mode() {
+        let watcher = FileWatcher.watch("./src/**/*.axon")
+        async.spawn(|| hotReloadWatcher(watcher, [recommender]))
+    }
+
+    // 启动 HTTP 服务器
+    Http.serve(8080, |req| handleRequest(req, recommender))
+}
+
+fn hotReloadWatcher(
+    watcher: FileWatcher,
+    agents:  List<AgentRef<Recommender>>  // 通知这些 agent 热更新
+) -> Unit | IO, Async
+{
+    for event in watcher.events() {
+        match event {
+            FileChanged(path) if path.ends_with(".axon") => {
+                Log.info("Detected change in {path}, hot reloading...")
+
+                let result = await HotReload.reload_file(path)
+
+                match result {
+                    Ok(delta) => {
+                        Log.info("Hot reload succeeded: {delta.modules_updated} modules updated")
+                        for agent in agents {
+                            Log.info("Recommender now at v{await agent.ask(GetVersion)}")
+                        }
+                    }
+                    Err(CompileError(msg)) => {
+                        Log.error("Compile error, keeping old version:\n{msg}")
+                        // 编译失败：旧版本继续运行！
+                    }
+                    Err(MigrationError(msg)) => {
+                        Log.error("State migration failed:\n{msg}")
+                        // 迁移失败：旧版本继续运行，保留数据一致性！
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn handleRequest(req: Http.Request, rec: AgentRef<Recommender>) -> Http.Response | Async {
+    match req.path {
+        "/recommend" => {
+            let ctx    = req.parse_json::<UserCtx>()?
+            let limit  = req.query.get("limit").and_then(Int.parse).unwrap_or(10)
+            let result = await rec.ask(Recommend(ctx, limit))
+            Http.Response.json(result)
+        }
+        "/click" => {
+            let item_id = req.query.get("id")?
+            rec.send(RecordClick(item_id))
+            Http.Response.ok()
+        }
+        "/stats" => {
+            let stats = await rec.ask(GetStats)
+            Http.Response.json(stats)
+        }
+        _ => Http.Response.not_found()
+    }
+}
+
+// ============================================================
+// 热更新的价值演示
+// ============================================================
+
+// 上面的场景展示了：
+//
+// 1. 服务启动，Recommender V1 运行中（处理真实用户请求）
+//
+// 2. AI 分析日志，发现推荐效果不佳，生成了 V2 代码
+//    - 修改了 Recommend 消息处理器（更智能的算法）
+//    - 添加了 RecordClick 新消息处理器
+//    - 添加了 click_counts 新状态字段
+//    - 编写了 migrate 声明（V1 state -> V2 state）
+//
+// 3. AI 保存文件，hotReloadWatcher 检测到变化
+//
+// 4. 编译器增量编译（只编译 RecommendationEngine 模块）
+//    - 如果编译失败：旧版本继续运行，错误日志供 AI 修正
+//    - 如果编译成功：继续热更新
+//
+// 5. 运行时执行热更新：
+//    - 暂停 Recommender 的消息队列（已在队列中的消息等待）
+//    - 对所有 Recommender 实例执行状态迁移（V1 -> V2）
+//    - 加载新的代码模块
+//    - 恢复消息队列（新消息用新代码处理）
+//
+// 6. 服务继续运行，零停机，所有数据保留！
+//
+// 整个过程：< 1 秒

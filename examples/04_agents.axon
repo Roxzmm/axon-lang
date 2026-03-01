@@ -1,0 +1,320 @@
+// ============================================================
+// Axon 语言示例 04：Agent 编程
+// ============================================================
+
+module Examples.Agents
+
+use std.agent.{spawn, AgentRef, Supervisor, Spec}
+use std.async.{Async, await}
+use std.time.{Duration, Timer}
+use std.log.Log
+
+// ============================================================
+// 基础 Agent：计数器
+// ============================================================
+
+agent Counter {
+    state {
+        count:   Int       = 0
+        history: List<Int> = []
+    }
+
+    on Increment -> Int {
+        history = history |> List.prepend(count)
+        count   = count + 1
+        count  // 返回新的计数
+    }
+
+    on DecrementBy(n: Int) -> Int {
+        history = history |> List.prepend(count)
+        count   = count - n
+        count
+    }
+
+    on Reset -> Unit {
+        history = history |> List.prepend(count)
+        count   = 0
+    }
+
+    on GetCount -> Int = count
+
+    on GetHistory -> List<Int> = history
+
+    on UndoLast -> Option<Int> {
+        match history {
+            []           => None
+            [prev, ..rest] => {
+                count   = prev
+                history = rest
+                Some(count)
+            }
+        }
+    }
+}
+
+fn demoCounter() -> Unit | Async, IO {
+    let counter = spawn Counter
+
+    // tell（不等待响应）
+    counter.send(Increment)
+    counter.send(Increment)
+    counter.send(Increment)
+
+    // ask（等待响应）
+    let n = await counter.ask(GetCount)
+    print("Count: {n}")  // 3
+
+    let after_dec = await counter.ask(DecrementBy(1))
+    print("After -1: {after_dec}")  // 2
+
+    let undone = await counter.ask(UndoLast)
+    print("After undo: {undone}")  // Some(3)
+
+    let history = await counter.ask(GetHistory)
+    print("History: {history}")
+
+    counter.stop()
+}
+
+// ============================================================
+// 有 IO 能力的 Agent
+// ============================================================
+
+type LogLevel = Debug | Info | Warn | Error
+
+agent FileLogger {
+    requires FileWrite
+
+    state {
+        file_path: String = "app.log"
+        buffer:    List<String> = []
+        flush_threshold: Int = 100
+    }
+
+    on Configure(path: String, threshold: Int) -> Unit {
+        file_path        = path
+        flush_threshold  = threshold
+    }
+
+    on WriteLog(level: LogLevel, msg: String) -> Unit | IO {
+        let timestamp = Time.now() |> Timestamp.format_iso8601()
+        let entry     = "[{timestamp}] [{level}] {msg}"
+        buffer        = buffer |> List.append(entry)
+
+        if buffer |> List.len() >= flush_threshold {
+            flushBuffer()
+        }
+    }
+
+    on Flush -> Result<Int, IOError> | IO {
+        flushBuffer()
+    }
+
+    priv fn flushBuffer() -> Result<Int, IOError> | IO {
+        let lines = buffer |> String.join("\n")
+        let count = buffer |> List.len()
+        File.append(file_path, lines + "\n")?
+        buffer = []
+        Ok(count)
+    }
+}
+
+// ============================================================
+// 网络 Agent：HTTP 数据获取
+// ============================================================
+
+type CacheEntry<T> = {
+    value:     T
+    cached_at: Timestamp
+    ttl:       Duration
+}
+
+agent DataCache {
+    requires NetworkHTTP
+
+    state {
+        cache:    Map<String, CacheEntry<String>> = Map.empty()
+        hit_count:  Int = 0
+        miss_count: Int = 0
+    }
+
+    on Fetch(url: String, ttl: Duration) -> Result<String, NetworkError> | Async {
+        // 检查缓存
+        match cache.get(url) {
+            Some(entry) if !isExpired(entry) => {
+                hit_count += 1
+                Ok(entry.value)
+            }
+            _ => {
+                // 缓存未命中，真正获取
+                miss_count += 1
+                let data = await http.get(url)?
+                let entry = CacheEntry {
+                    value:     data.body,
+                    cached_at: Time.now(),
+                    ttl:       ttl
+                }
+                cache = cache |> Map.insert(url, entry)
+                Ok(data.body)
+            }
+        }
+    }
+
+    on GetStats -> (Int, Int, Float) {
+        let total   = hit_count + miss_count
+        let hit_rate = if total > 0 { hit_count |> Float.from() / total |> Float.from() } else { 0.0 }
+        (hit_count, miss_count, hit_rate)
+    }
+
+    on ClearCache -> Int {
+        let count = cache |> Map.len()
+        cache = Map.empty()
+        count
+    }
+
+    priv fn isExpired(entry: CacheEntry<String>) -> Bool {
+        Time.now() |> Timestamp.diff(entry.cached_at) > entry.ttl
+    }
+}
+
+// ============================================================
+// 状态机 Agent
+// ============================================================
+
+type TrafficState = Red | Yellow | Green
+type TrafficEvent = TimerExpired | EmergencyOverride
+
+agent TrafficLight {
+    state {
+        current:  TrafficState = Red
+        duration: Duration     = 30.sec
+    }
+
+    on TimerExpired -> TrafficState {
+        current = match current {
+            Red    => { duration = 25.sec; Green  }
+            Green  => { duration = 5.sec;  Yellow }
+            Yellow => { duration = 30.sec; Red    }
+        }
+        current
+    }
+
+    on EmergencyOverride -> TrafficState {
+        // 紧急情况：立即变红
+        current  = Red
+        duration = 60.sec
+        current
+    }
+
+    on GetState -> (TrafficState, Duration) = (current, duration)
+}
+
+// ============================================================
+// 监督树示例
+// ============================================================
+
+supervisor AppSupervisor {
+    strategy: OneForOne
+
+    children: [
+        Spec.permanent(FileLogger),
+        Spec.permanent(DataCache),
+        Spec.permanent(TrafficLight),
+    ]
+
+    max_restarts:   5
+    restart_window: 60.sec
+}
+
+// ============================================================
+// Agent 并发模式：并发请求聚合
+// ============================================================
+
+type SearchResult = {
+    source: String
+    items:  List<String>
+    took:   Duration
+}
+
+agent SearchAggregator {
+    requires NetworkHTTP
+
+    on Search(query: String) -> Result<List<SearchResult>, NetworkError> | Async {
+        let start = Time.now()
+
+        // 并发搜索多个来源
+        let (r1, r2, r3) = await.all((
+            searchSource("google.com",  query),
+            searchSource("bing.com",    query),
+            searchSource("duckduckgo.com", query)
+        ))?
+
+        let results = [r1, r2, r3]
+        Ok(results)
+    }
+
+    priv fn searchSource(source: String, query: String)
+        -> Result<SearchResult, NetworkError> | Async
+    {
+        let start = Time.now()
+        let resp  = await http.get("https://{source}/search?q={query}")?
+        let items = parseResults(resp.body)
+        let took  = Time.now() |> Timestamp.diff(start)
+        Ok(SearchResult { source, items, took })
+    }
+
+    priv fn parseResults(html: String) -> List<String> {
+        // 简化：实际需要 HTML 解析
+        html |> String.lines() |> List.filter(|l| l.contains("<result>"))
+    }
+}
+
+// ============================================================
+// 主程序：组合使用
+// ============================================================
+
+fn main() -> Unit | Async, IO {
+    // 启动监督树（会自动启动所有子 Agent）
+    let supervisor = spawn AppSupervisor
+
+    // 获取子 Agent 引用
+    let logger: AgentRef<FileLogger> = supervisor.get_child("FileLogger")
+    let cache:  AgentRef<DataCache>  = supervisor.get_child("DataCache")
+
+    // 配置 Logger
+    logger.send(Configure("output.log", 50))
+
+    // 使用缓存
+    let url     = "https://api.example.com/data"
+    let result  = await cache.ask(Fetch(url, 5.min))
+
+    match result {
+        Ok(data)  => {
+            logger.send(WriteLog(Info, "Fetched: {data |> String.take(50)}..."))
+            print("Data: {data}")
+        }
+        Err(e) => {
+            logger.send(WriteLog(Error, "Fetch failed: {e}"))
+            print("Error: {e}")
+        }
+    }
+
+    // 获取缓存统计
+    let (hits, misses, rate) = await cache.ask(GetStats)
+    print("Cache: {hits} hits, {misses} misses, {rate:.1%} hit rate")
+
+    // 并发搜索
+    let searcher = spawn SearchAggregator
+    match await searcher.ask(Search("Axon programming language")) {
+        Ok(results) => {
+            for r in results {
+                print("{r.source}: {r.items |> List.len()} results in {r.took}")
+            }
+        }
+        Err(e) => print("Search failed: {e}")
+    }
+
+    // 优雅关闭
+    logger.send(Flush)
+    supervisor.stop()
+}

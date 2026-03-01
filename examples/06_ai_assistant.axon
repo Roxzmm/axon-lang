@@ -1,0 +1,425 @@
+// ============================================================
+// Axon 语言示例 06：完整的 AI Assistant 系统
+// 展示 Axon 如何将所有特性组合在一起
+// ============================================================
+
+#[hot]
+module AIAssistant
+
+use std.llm.{LLM, Model, Message, ToolCall, ToolResult}
+use std.agent.{spawn, AgentRef, Supervisor, Spec}
+use std.async.{Async, await}
+use std.http.{Http}
+use std.log.Log
+
+// ============================================================
+// 数据模型
+// ============================================================
+
+type ConversationId = String where String.len(self) == 36  // UUID
+type MessageRole    = User | Assistant | System | Tool
+type TokenCount     = Int where self >= 0
+
+type ChatMessage = {
+    role:    MessageRole
+    content: String
+    tokens:  Option<TokenCount>
+}
+
+type Conversation = {
+    id:       ConversationId
+    messages: List<ChatMessage>
+    model:    Model
+    created:  Timestamp
+    updated:  Timestamp
+}
+
+type ToolDefinition = {
+    name:        String
+    description: String
+    parameters:  JsonSchema
+    handler:     String -> Result<String, ToolError> | IO, Async
+}
+
+type ToolError =
+    | InvalidInput(String)
+    | ExecutionFailed(String)
+    | Unauthorized
+
+// ============================================================
+// Tool 定义（AI 可以调用的工具）
+// ============================================================
+
+#[tool(name = "web_search", description = "Search the web for information")]
+fn webSearch(query: String) -> Result<String, ToolError> | NetworkIO, Async {
+    let results = await SearchEngine.search(query)?
+    let formatted = results
+        |> List.take(5)
+        |> List.map(|r| "- [{r.title}]({r.url}): {r.snippet}")
+        |> String.join("\n")
+    Ok(formatted)
+}
+
+#[tool(name = "calculator", description = "Evaluate mathematical expressions")]
+fn calculator(expression: String) -> Result<String, ToolError> {
+    match MathParser.evaluate(expression) {
+        Ok(result)  => Ok("{expression} = {result}")
+        Err(e)      => Err(InvalidInput("Invalid expression: {e}"))
+    }
+}
+
+#[tool(name = "read_file", description = "Read a file from the workspace")]
+fn readWorkspaceFile(path: String) -> Result<String, ToolError> | FileIO {
+    // 安全检查：只允许读取 workspace 目录内的文件
+    let safe_path = Path.sandbox(path, workspace_root)?
+    File.read(safe_path)
+        .map_err(|e| ExecutionFailed("Cannot read file: {e}"))
+}
+
+#[tool(name = "write_file", description = "Write or update a file in the workspace")]
+fn writeWorkspaceFile(path: String, content: String) -> Result<String, ToolError> | FileIO {
+    let safe_path = Path.sandbox(path, workspace_root)?
+    File.write(safe_path, content)
+        .map_err(|e| ExecutionFailed("Cannot write file: {e}"))?
+    Ok("File written: {path}")
+}
+
+#[tool(name = "run_code", description = "Execute code in a sandboxed environment")]
+fn runCode(language: String, code: String) -> Result<String, ToolError> | Async {
+    let allowed_langs = ["python", "javascript", "axon"]
+    if !allowed_langs.contains(language) {
+        return Err(InvalidInput("Unsupported language: {language}"))
+    }
+
+    let result = await Sandbox.execute(
+        language: language,
+        code:     code,
+        timeout:  10.sec,
+        memory:   128.mb
+    )
+
+    match result {
+        Ok(output)     => Ok(output)
+        Err(Timeout)   => Err(ExecutionFailed("Code execution timed out"))
+        Err(OOM)       => Err(ExecutionFailed("Code exceeded memory limit"))
+        Err(RuntimeError(msg)) => Err(ExecutionFailed("Runtime error: {msg}"))
+    }
+}
+
+// ============================================================
+// 对话管理 Agent
+// ============================================================
+
+agent ConversationManager {
+    state {
+        conversations: Map<ConversationId, Conversation> = Map.empty()
+        max_history:   Int                               = 50  // 每对话最多保留的消息数
+    }
+
+    on Create(model: Model) -> ConversationId {
+        let id = UUID.generate()
+        let conv = Conversation {
+            id:       id,
+            messages: [],
+            model:    model,
+            created:  Time.now(),
+            updated:  Time.now()
+        }
+        conversations = conversations |> Map.insert(id, conv)
+        id
+    }
+
+    on AddMessage(conv_id: ConversationId, msg: ChatMessage) -> Result<Unit, String> {
+        match conversations.get(conv_id) {
+            None       => Err("Conversation not found: {conv_id}")
+            Some(conv) => {
+                let msgs = conv.messages |> List.append(msg)
+                // 超出历史长度限制时，保留 system 消息 + 最新消息
+                let trimmed = if msgs |> List.len() > max_history {
+                    let system_msgs = msgs |> List.filter(|m| m.role == System)
+                    let recent      = msgs |> List.filter(|m| m.role != System)
+                                         |> List.last(max_history - system_msgs |> List.len())
+                    system_msgs ++ recent
+                } else {
+                    msgs
+                }
+                let updated = conv with { messages: trimmed, updated: Time.now() }
+                conversations = conversations |> Map.insert(conv_id, updated)
+                Ok(())
+            }
+        }
+    }
+
+    on GetMessages(conv_id: ConversationId) -> Option<List<ChatMessage>> {
+        conversations.get(conv_id) |> Option.map(|c| c.messages)
+    }
+
+    on DeleteConversation(conv_id: ConversationId) -> Bool {
+        let existed = conversations.has(conv_id)
+        conversations = conversations |> Map.remove(conv_id)
+        existed
+    }
+
+    on GetStats -> Map<String, Int> {
+        Map.from([("total_conversations", conversations |> Map.len())])
+    }
+}
+
+// ============================================================
+// LLM 调用 Agent（带重试和限流）
+// ============================================================
+
+agent LLMCaller {
+    requires NetworkHTTP
+
+    state {
+        call_count:   Int       = 0
+        error_count:  Int       = 0
+        rate_limiter: RateLimiter = RateLimiter.new(60, 60.sec)  // 每分钟60次
+    }
+
+    on Complete(
+        messages:     List<ChatMessage>,
+        model:        Model,
+        tools:        List<ToolDefinition>,
+        max_tokens:   Int = 4096
+    ) -> Result<LLMResponse, LLMError> | Async
+    {
+        // 限流
+        await rate_limiter.acquire()?
+
+        call_count += 1
+
+        // 带指数退避的重试
+        let result = await retry(
+            attempts: 3,
+            backoff:  ExponentialBackoff.new(1.sec, 30.sec),
+            || LLM.complete(model, messages, tools, max_tokens)
+        )
+
+        match result {
+            Err(_) => { error_count += 1 }
+            _      => {}
+        }
+
+        result
+    }
+
+    on GetStats -> (Int, Int) = (call_count, error_count)
+}
+
+// ============================================================
+// 工具执行 Agent
+// ============================================================
+
+agent ToolExecutor {
+    state {
+        tools:         Map<String, ToolDefinition> = Map.empty()
+        exec_counts:   Map<String, Int>             = Map.empty()
+    }
+
+    on RegisterTool(def: ToolDefinition) -> Unit {
+        tools = tools |> Map.insert(def.name, def)
+        Log.info("Registered tool: {def.name}")
+    }
+
+    on RegisterAnnotated -> Int {
+        // 自动注册所有 #[tool] 函数（编译期收集）
+        let auto_tools = ToolRegistry.collect_annotated()
+        for tool in auto_tools {
+            tools = tools |> Map.insert(tool.name, tool)
+        }
+        auto_tools |> List.len()
+    }
+
+    on Execute(call: ToolCall) -> ToolResult | IO, Async {
+        match tools.get(call.tool_name) {
+            None => ToolResult.error(call.id, "Unknown tool: {call.tool_name}")
+            Some(tool) => {
+                let count = exec_counts.get(call.tool_name).unwrap_or(0)
+                exec_counts = exec_counts |> Map.insert(call.tool_name, count + 1)
+
+                let result = await tool.handler(call.arguments)
+                match result {
+                    Ok(output) => ToolResult.success(call.id, output)
+                    Err(e)     => ToolResult.error(call.id, "{e}")
+                }
+            }
+        }
+    }
+
+    on GetToolSchemas -> List<JsonSchema> {
+        tools |> Map.values() |> List.map(|t| t.parameters)
+    }
+}
+
+// ============================================================
+// 主 Assistant Agent（编排所有子系统）
+// ============================================================
+
+agent Assistant {
+    requires NetworkHTTP, FileIO
+
+    state {
+        conv_manager:  AgentRef<ConversationManager>
+        llm_caller:    AgentRef<LLMCaller>
+        tool_executor: AgentRef<ToolExecutor>
+        default_model: Model = Model.ClaudeSonnet4
+        system_prompt: String = "You are a helpful AI assistant."
+    }
+
+    on Start -> Unit | Async {
+        // 初始化子 Agent
+        conv_manager  = spawn ConversationManager
+        llm_caller    = spawn LLMCaller
+        tool_executor = spawn ToolExecutor
+
+        // 注册工具
+        let tool_count = await tool_executor.ask(RegisterAnnotated)
+        Log.info("Assistant started with {tool_count} tools")
+    }
+
+    on NewConversation(model: Option<Model>) -> ConversationId | Async {
+        let m    = model.unwrap_or(default_model)
+        let id   = await conv_manager.ask(Create(m))
+        let sys  = ChatMessage { role: System, content: system_prompt, tokens: None }
+        conv_manager.send(AddMessage(id, sys))
+        id
+    }
+
+    on Chat(conv_id: ConversationId, user_msg: String)
+        -> Result<String, AssistantError> | Async, IO
+    {
+        // 1. 保存用户消息
+        let user = ChatMessage { role: User, content: user_msg, tokens: None }
+        conv_manager.send(AddMessage(conv_id, user))
+
+        // 2. 获取对话历史
+        let messages = await conv_manager.ask(GetMessages(conv_id))
+            |> Option.ok_or(AssistantError.ConversationNotFound(conv_id))?
+
+        // 3. 获取工具定义
+        let tool_schemas = await tool_executor.ask(GetToolSchemas)
+
+        // 4. 调用 LLM
+        let response = await llm_caller.ask(Complete(
+            messages:   messages |> List.map(toChatMessage),
+            model:      default_model,
+            tools:      tool_schemas
+        ))
+        |> Result.map_err(AssistantError.LLM)?
+
+        // 5. 处理工具调用（可能多轮）
+        let final_response = await handleToolLoop(conv_id, response)?
+
+        // 6. 保存助手回复
+        let assistant_msg = ChatMessage {
+            role:    Assistant,
+            content: final_response.content,
+            tokens:  Some(final_response.usage.output_tokens)
+        }
+        conv_manager.send(AddMessage(conv_id, assistant_msg))
+
+        Ok(final_response.content)
+    }
+
+    priv fn handleToolLoop(
+        conv_id:  ConversationId,
+        response: LLMResponse
+    ) -> Result<LLMResponse, AssistantError> | Async, IO
+    {
+        // 如果没有工具调用，直接返回
+        if response.tool_calls |> List.is_empty() {
+            return Ok(response)
+        }
+
+        // 并发执行所有工具调用
+        let tool_results = await response.tool_calls
+            |> List.map(|call| tool_executor.ask(Execute(call)))
+            |> Async.all()
+
+        // 将工具结果加入对话
+        for result in tool_results {
+            let msg = ChatMessage {
+                role:    Tool,
+                content: result |> ToolResult.to_string(),
+                tokens:  None
+            }
+            conv_manager.send(AddMessage(conv_id, msg))
+        }
+
+        // 获取更新后的对话历史，再次调用 LLM
+        let messages = await conv_manager.ask(GetMessages(conv_id))
+            |> Option.ok_or(AssistantError.ConversationNotFound(conv_id))?
+            |> List.map(toChatMessage)
+
+        let next_response = await llm_caller.ask(Complete(
+            messages: messages,
+            model:    default_model,
+            tools:    []  // 不再允许工具调用（避免无限循环）
+        ))
+        |> Result.map_err(AssistantError.LLM)?
+
+        Ok(next_response)
+    }
+
+    priv fn toChatMessage(m: ChatMessage) -> Message {
+        match m.role {
+            System    => Message.system(m.content)
+            User      => Message.user(m.content)
+            Assistant => Message.assistant(m.content)
+            Tool      => Message.tool(m.content)
+        }
+    }
+}
+
+type AssistantError =
+    | ConversationNotFound(ConversationId)
+    | LLM(LLMError)
+    | Tool(ToolError)
+
+// ============================================================
+// HTTP API 层
+// ============================================================
+
+fn startServer(assistant: AgentRef<Assistant>) -> Unit | IO, Async {
+    Http.serve(8080) |req| {
+        match (req.method, req.path) {
+            (POST, "/conversations") => {
+                let body   = req.json::<NewConvRequest>()?
+                let conv_id = await assistant.ask(NewConversation(body.model))
+                Http.Response.json({ conv_id })
+            }
+
+            (POST, "/conversations/{id}/messages") => {
+                let body    = req.json::<ChatRequest>()?
+                let result  = await assistant.ask(Chat(id, body.message))
+                match result {
+                    Ok(reply)  => Http.Response.json({ reply })
+                    Err(e)     => Http.Response.error(500, "{e}")
+                }
+            }
+
+            (DELETE, "/conversations/{id}") => {
+                await assistant.ask(DeleteConversation(id))
+                Http.Response.no_content()
+            }
+
+            _ => Http.Response.not_found()
+        }
+    }
+}
+
+// ============================================================
+// 主程序
+// ============================================================
+
+fn main() -> Unit | IO, Async {
+    Log.info("Starting AI Assistant...")
+
+    let assistant = spawn Assistant
+    await assistant.ask(Start)
+
+    Log.info("AI Assistant ready on port 8080")
+    startServer(assistant)
+}

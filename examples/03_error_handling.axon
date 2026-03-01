@@ -1,0 +1,239 @@
+// ============================================================
+// Axon 语言示例 03：错误处理
+// ============================================================
+
+module Examples.ErrorHandling
+
+// ============================================================
+// Result 和 Option：无异常的错误处理
+// ============================================================
+
+// 定义领域错误类型
+type ParseError =
+    | InvalidFormat(String)
+    | OutOfRange { min: Int, max: Int, got: Int }
+    | EmptyInput
+
+type NetworkError =
+    | ConnectionRefused(String)
+    | Timeout { seconds: Int }
+    | InvalidResponse(Int)  // HTTP 状态码
+
+type AppError =
+    | Parse(ParseError)
+    | Network(NetworkError)
+    | IO(IOError)
+    | Unexpected(String)
+
+// ============================================================
+// ? 操作符：错误传播
+// ============================================================
+
+fn parseAge(s: String) -> Result<Int, ParseError> {
+    if s |> String.is_empty() {
+        return Err(EmptyInput)
+    }
+
+    let n = match Int.parse(s) {
+        Ok(n)  => n
+        Err(_) => return Err(InvalidFormat("Not a number: {s}"))
+    }
+
+    if n < 0 || n > 150 {
+        return Err(OutOfRange { min: 0, max: 150, got: n })
+    }
+
+    Ok(n)
+}
+
+fn parseEmail(s: String) -> Result<String, ParseError> {
+    if !s.contains("@") {
+        Err(InvalidFormat("Email must contain @: {s}"))
+    } else {
+        Ok(s)
+    }
+}
+
+type UserInput = { name: String, age_str: String, email_str: String }
+type User      = { name: String, age: Int, email: String }
+
+// ? 自动传播错误
+fn parseUser(input: UserInput) -> Result<User, ParseError> {
+    let age   = parseAge(input.age_str)?      // 如果 Err，立即返回
+    let email = parseEmail(input.email_str)?  // 如果 Err，立即返回
+
+    Ok(User {
+        name:  input.name,
+        age:   age,
+        email: email
+    })
+}
+
+// 错误类型转换（使用 map_err 和 Into trait）
+fn loadUser(input: UserInput) -> Result<User, AppError> {
+    parseUser(input)
+        .map_err(AppError.Parse)  // ParseError -> AppError
+}
+
+// ============================================================
+// Result 组合器
+// ============================================================
+
+fn demonstrateResultCombiners() -> Unit | IO {
+    let r: Result<Int, String> = Ok(42)
+
+    // map：对 Ok 值变换
+    let doubled = r.map(|n| n * 2)          // Ok(84)
+
+    // map_err：对 Err 值变换
+    let r2: Result<Int, String> = Err("oops")
+    let detailed = r2.map_err(|e| "Error: {e}")  // Err("Error: oops")
+
+    // and_then（flatMap）：链式操作
+    let result = Ok(5)
+        |> Result.and_then(|n| if n > 0 { Ok(n * 2) } else { Err("negative") })
+        |> Result.and_then(|n| Ok(n + 1))
+    // result = Ok(11)
+
+    // or_else：错误恢复
+    let recovered = Err("failed")
+        |> Result.or_else(|_| Ok(0))  // 错误时用默认值
+    // recovered = Ok(0)
+
+    // unwrap_or：提供默认值（消费 Result）
+    let value = r.unwrap_or(0)    // 42
+    let default = r2.unwrap_or(0)  // 0
+
+    // unwrap_or_else：用函数计算默认值
+    let computed = r2.unwrap_or_else(|e| {
+        Log.error("Error occurred: {e}")
+        -1
+    })  // -1
+
+    // 收集多个 Result
+    let results: List<Result<Int, String>> = [Ok(1), Ok(2), Err("bad"), Ok(4)]
+    let all_ok  = results |> Result.collect_all()    // Err("bad")
+    let ok_only = results |> Result.collect_ok_only() // Ok([1, 2, 4])
+
+    print("Done")
+}
+
+// ============================================================
+// Option 处理
+// ============================================================
+
+fn demonstrateOption() -> Unit | IO {
+    let maybe: Option<Int> = Some(42)
+    let nothing: Option<Int> = None
+
+    // map
+    let doubled = maybe.map(|n| n * 2)  // Some(84)
+    let still_none = nothing.map(|n| n * 2)  // None
+
+    // and_then (flatMap)
+    fn safeDiv(a: Int, b: Int) -> Option<Int> {
+        if b == 0 { None } else { Some(a / b) }
+    }
+
+    let div_result = maybe.and_then(|n| safeDiv(100, n))  // Some(2)
+
+    // or / or_else
+    let fallback = nothing.or(Some(0))  // Some(0)
+
+    // 转为 Result
+    let as_result = maybe.ok_or("was empty")      // Ok(42)
+    let as_result2 = nothing.ok_or("was empty")   // Err("was empty")
+
+    // 模式匹配（最清晰的方式）
+    match maybe {
+        Some(n) => print("Got: {n}")
+        None    => print("Nothing")
+    }
+
+    // if let（语法糖，只处理 Some）
+    if let Some(n) = maybe {
+        print("Value is {n}")
+    }
+
+    // while let（循环直到 None）
+    let mut stack = [1, 2, 3, 4, 5] |> List.to_stack()
+    while let Some(top) = stack.pop() {
+        print("Popped: {top}")
+    }
+}
+
+// ============================================================
+// 错误上下文（添加错误信息）
+// ============================================================
+
+fn readConfig(path: String) -> Result<Config, AppError> | IO {
+    // context() 在错误上添加上下文信息
+    File.read(path)
+        .map_err(AppError.IO)
+        .context("Failed to read config file: {path}")?
+
+    // 或者使用 with_context（惰性求值）
+    File.read(path)
+        .map_err(AppError.IO)
+        .with_context(|| "Failed to read config at {path} (cwd: {Env.cwd()})")?
+}
+
+// ============================================================
+// 错误处理的最佳实践
+// ============================================================
+
+// 1. 在模块边界收集和转换错误
+fn processRequest(req: Request) -> Result<Response, AppError> | IO, Async {
+    // 所有内部错误都转换为 AppError
+    let body    = req.parse_body::<RequestBody>()
+                      .map_err(|e| AppError.Parse(InvalidFormat(e.to_string())))?
+    let result  = await fetchData(body.query)
+                      .map_err(AppError.Network)?
+    let response = buildResponse(result)
+                      .map_err(|e| AppError.Unexpected(e))?
+    Ok(response)
+}
+
+// 2. 在最外层处理错误（不要在内部 unwrap）
+fn main() -> Unit | IO, Async {
+    match processRequest(Request.current()) {
+        Ok(response) => {
+            response.send()
+        }
+        Err(AppError.Parse(e)) => {
+            Response.bad_request("Invalid input: {e}").send()
+        }
+        Err(AppError.Network(NetworkError.Timeout { seconds })) => {
+            Response.gateway_timeout("Upstream timed out after {seconds}s").send()
+        }
+        Err(AppError.Network(e)) => {
+            Response.bad_gateway("Upstream error: {e}").send()
+        }
+        Err(AppError.IO(e)) => {
+            Log.error("IO error: {e}")
+            Response.internal_error("Internal error").send()
+        }
+        Err(AppError.Unexpected(msg)) => {
+            Log.error("Unexpected: {msg}")
+            Response.internal_error("Unexpected error").send()
+        }
+    }
+}
+
+// ============================================================
+// 与异常机制的对比说明
+// ============================================================
+
+// Axon 没有 try/catch，原因：
+// 1. 异常可以从任何地方抛出，难以追踪
+// 2. Result 类型让错误成为函数签名的一部分
+// 3. ? 操作符使错误传播和异常一样简洁
+// 4. 编译器强制处理所有错误（不能忘记处理）
+
+// 对比 TypeScript：
+//   try { await fetchData() } catch (e: any) { ... }
+//   问题：e 的类型是 any，catch 块不知道处理什么错误
+
+// 对比 Rust：
+//   fetchData().map_err(|e| AppError::Network(e))?
+//   Axon 的做法几乎相同，但语法更简洁

@@ -1,0 +1,473 @@
+(*
+  Axon Language Formal Grammar (EBNF)
+  Version 0.1
+
+  表示约定：
+    ::=    定义
+    |      选择
+    [ ]    可选（0次或1次）
+    { }    重复（0次或多次）
+    ( )    分组
+    ' '    终结符（字面量）
+    (* *) 注释
+*)
+
+(* ============================================================ *)
+(*  顶层结构                                                     *)
+(* ============================================================ *)
+
+program         ::= module_decl { top_level_item }
+
+module_decl     ::= [ annotation ] 'module' module_path NEWLINE
+
+module_path     ::= identifier { '.' identifier }
+
+top_level_item  ::= use_decl
+                  | fn_decl
+                  | type_decl
+                  | trait_decl
+                  | impl_decl
+                  | agent_decl
+                  | effect_decl
+                  | capability_decl
+                  | supervisor_decl
+                  | migrate_decl
+                  | const_decl
+                  | annotation top_level_item
+
+(* ============================================================ *)
+(*  导入声明                                                     *)
+(* ============================================================ *)
+
+use_decl        ::= 'use' module_path [ '.' use_items ] NEWLINE
+
+use_items       ::= '{' use_item { ',' use_item } '}'
+                  | identifier [ 'as' identifier ]
+
+use_item        ::= identifier [ 'as' identifier ]
+                  | '*'
+
+(* ============================================================ *)
+(*  注解（Annotations）                                          *)
+(* ============================================================ *)
+
+annotation      ::= '#' '[' annotation_body ']'
+
+annotation_body ::= identifier [ '(' annotation_args ')' ]
+
+annotation_args ::= annotation_arg { ',' annotation_arg }
+
+annotation_arg  ::= identifier '=' literal
+                  | identifier
+
+(* ============================================================ *)
+(*  常量声明                                                     *)
+(* ============================================================ *)
+
+const_decl      ::= 'const' identifier ':' type '=' expr NEWLINE
+
+(* ============================================================ *)
+(*  函数声明                                                     *)
+(* ============================================================ *)
+
+fn_decl         ::= [ visibility ] 'fn' identifier
+                    [ type_params ]
+                    '(' [ param_list ] ')'
+                    [ '->' type ]
+                    [ effect_ann ]
+                    [ where_clause ]
+                    fn_body
+
+visibility      ::= 'pub' | 'internal' | 'priv'
+
+type_params     ::= '<' type_param { ',' type_param } '>'
+
+type_param      ::= identifier [ ':' trait_bound ]
+
+trait_bound     ::= trait_ref { '+' trait_ref }
+
+trait_ref       ::= module_path [ '<' type { ',' type } '>' ]
+
+param_list      ::= param { ',' param }
+
+param           ::= identifier ':' type [ '=' expr ]
+
+effect_ann      ::= '|' effect_row
+
+effect_row      ::= effect_ref { ',' effect_ref }
+
+effect_ref      ::= identifier [ '<' type '>' ]
+
+where_clause    ::= 'where' type ':' trait_bound
+                    { ',' type ':' trait_bound }
+
+fn_body         ::= '{' { stmt } [ expr ] '}'
+                  | '=' expr        (* 简写：单表达式函数 *)
+
+(* ============================================================ *)
+(*  类型声明                                                     *)
+(* ============================================================ *)
+
+type_decl       ::= [ visibility ] 'type' identifier
+                    [ type_params ]
+                    '=' type_def NEWLINE
+
+type_def        ::= record_type
+                  | enum_type
+                  | type_alias
+                  | refinement_type
+
+record_type     ::= '{' { field_decl } '}'
+
+field_decl      ::= identifier ':' type NEWLINE
+
+enum_type       ::= variant { NEWLINE variant }
+
+variant         ::= '|' identifier [ variant_fields ]
+
+variant_fields  ::= '(' type { ',' type } ')'        (* 元组变体 *)
+                  | '{' { field_decl } '}'            (* 记录变体 *)
+
+type_alias      ::= type
+
+refinement_type ::= type 'where' refinement_pred
+
+refinement_pred ::= expr                               (* 谓词表达式，self 指代被精化的值 *)
+                  | refinement_pred 'and' refinement_pred
+                  | refinement_pred 'or'  refinement_pred
+                  | 'not' refinement_pred
+                  | '(' refinement_pred ')'
+
+(* ============================================================ *)
+(*  类型表达式                                                   *)
+(* ============================================================ *)
+
+type            ::= simple_type
+                  | generic_type
+                  | tuple_type
+                  | fn_type
+                  | refinement_type_expr
+
+simple_type     ::= module_path
+
+generic_type    ::= module_path '<' type { ',' type } '>'
+
+tuple_type      ::= '(' type { ',' type } ')'
+
+fn_type         ::= type '->' type [ '|' effect_row ]
+                  | '(' type { ',' type } ')' '->' type [ '|' effect_row ]
+
+refinement_type_expr ::= type 'where' refinement_pred
+
+(* ============================================================ *)
+(*  Trait 声明和实现                                             *)
+(* ============================================================ *)
+
+trait_decl      ::= [ visibility ] 'trait' identifier [ type_params ]
+                    [ ':' trait_bound ]                (* 父 Trait *)
+                    '{' { trait_member } '}'
+
+trait_member    ::= fn_decl                            (* 方法声明或默认实现 *)
+                  | type_decl                          (* 关联类型 *)
+                  | const_decl                         (* 关联常量 *)
+
+impl_decl       ::= 'impl' [ type_params ] trait_ref 'for' type
+                    [ where_clause ]
+                    '{' { fn_decl } '}'
+
+(* ============================================================ *)
+(*  Effect 声明                                                  *)
+(* ============================================================ *)
+
+effect_decl     ::= 'effect' identifier [ '<:' identifier ] NEWLINE
+
+capability_decl ::= 'capability' identifier '=' capability_body NEWLINE
+
+capability_body ::= 'allows' effect_ref [ 'where' expr ]
+                  | capability_body '+' capability_body
+
+(* ============================================================ *)
+(*  Agent 声明                                                   *)
+(* ============================================================ *)
+
+agent_decl      ::= [ visibility ] 'agent' identifier
+                    [ ':' type ]                       (* 消息类型约束 *)
+                    '{' agent_body '}'
+
+agent_body      ::= [ requires_clause ]
+                    [ state_block ]
+                    { message_handler }
+                    [ error_handler ]
+
+requires_clause ::= 'requires' capability_ref { ',' capability_ref } NEWLINE
+
+capability_ref  ::= identifier
+
+state_block     ::= 'state' '{' { state_field } '}'
+
+state_field     ::= identifier ':' type '=' expr NEWLINE
+
+message_handler ::= 'on' type [ '(' [ param_list ] ')' ]
+                    '->' type
+                    [ '|' effect_row ]
+                    fn_body
+
+error_handler   ::= 'on' 'Error' '(' identifier ':' type ')'
+                    '->' 'ErrorAction'
+                    fn_body
+
+(* ============================================================ *)
+(*  监督者声明                                                   *)
+(* ============================================================ *)
+
+supervisor_decl ::= 'supervisor' identifier '{' supervisor_body '}'
+
+supervisor_body ::= 'strategy' ':' strategy_expr NEWLINE
+                    'children' ':' '[' { child_spec } ']' NEWLINE
+                    [ 'max_restarts' ':' integer NEWLINE ]
+                    [ 'restart_window' ':' expr NEWLINE ]
+
+strategy_expr   ::= 'OneForOne' | 'AllForOne' | 'RestForOne'
+
+child_spec      ::= 'Spec' '.' restart_type '(' type [ ',' expr ] ')' ','
+
+restart_type    ::= 'permanent' | 'transient' | 'temporary'
+
+(* ============================================================ *)
+(*  热更新迁移声明                                               *)
+(* ============================================================ *)
+
+migrate_decl    ::= 'migrate' module_path '.' 'State' '{' migrate_body '}'
+
+migrate_body    ::= 'from' identifier '{' { field_decl } '}'
+                    'to'   identifier '{' { field_decl } '}'
+                    'with' '|' identifier '|' record_expr
+
+(* ============================================================ *)
+(*  语句                                                         *)
+(* ============================================================ *)
+
+stmt            ::= let_stmt
+                  | let_mut_stmt
+                  | assign_stmt
+                  | expr_stmt
+                  | for_stmt
+                  | while_stmt
+                  | loop_stmt
+                  | return_stmt
+                  | break_stmt
+                  | continue_stmt
+                  | with_stmt
+
+let_stmt        ::= 'let' pattern [ ':' type ] '=' expr NEWLINE
+
+let_mut_stmt    ::= 'let' 'mut' identifier [ ':' type ] '=' expr NEWLINE
+
+assign_stmt     ::= assignable '=' expr NEWLINE
+                  | assignable '+=' expr NEWLINE
+                  | assignable '-=' expr NEWLINE
+                  | assignable '*=' expr NEWLINE
+                  | assignable '/=' expr NEWLINE
+
+assignable      ::= identifier
+                  | expr '.' identifier
+                  | expr '[' expr ']'
+
+expr_stmt       ::= expr NEWLINE
+
+for_stmt        ::= 'for' pattern 'in' expr fn_body
+
+while_stmt      ::= 'while' expr fn_body
+
+loop_stmt       ::= 'loop' fn_body
+
+return_stmt     ::= 'return' [ expr ] NEWLINE
+
+break_stmt      ::= 'break' [ expr ] NEWLINE
+
+continue_stmt   ::= 'continue' NEWLINE
+
+with_stmt       ::= 'with' identifier '=' expr fn_body
+
+(* ============================================================ *)
+(*  表达式                                                       *)
+(* ============================================================ *)
+
+expr            ::= literal
+                  | identifier
+                  | prefix_expr
+                  | infix_expr
+                  | call_expr
+                  | method_call_expr
+                  | index_expr
+                  | field_access_expr
+                  | block_expr
+                  | if_expr
+                  | match_expr
+                  | lambda_expr
+                  | await_expr
+                  | pipe_expr
+                  | try_expr
+                  | force_expr
+                  | record_expr
+                  | record_update_expr
+                  | list_expr
+                  | tuple_expr
+                  | type_ascription
+                  | '(' expr ')'
+
+literal         ::= integer_literal
+                  | float_literal
+                  | bool_literal
+                  | string_literal
+                  | char_literal
+                  | unit_literal
+
+integer_literal ::= ['-'] DIGIT { DIGIT | '_' }
+                  | '0x' HEX_DIGIT { HEX_DIGIT | '_' }
+                  | '0b' BIN_DIGIT { BIN_DIGIT | '_' }
+                  | '0o' OCT_DIGIT { OCT_DIGIT | '_' }
+
+float_literal   ::= ['-'] DIGIT { DIGIT } '.' DIGIT { DIGIT }
+                    [ ('e' | 'E') ['+' | '-'] DIGIT { DIGIT } ]
+
+bool_literal    ::= 'true' | 'false'
+
+string_literal  ::= '"' { string_char } '"'
+                  | 'r"' { raw_string_char } '"'
+                  | '"""' { any_char } '"""'
+
+char_literal    ::= "'" char_char "'"
+
+unit_literal    ::= '()'
+
+prefix_expr     ::= ('-' | '!' | '~') expr
+
+infix_expr      ::= expr infix_op expr
+
+infix_op        ::= '+' | '-' | '*' | '/' | '%' | '**'
+                  | '==' | '!=' | '<' | '>' | '<=' | '>='
+                  | '&&' | '||'
+                  | '&' | '|' | '^' | '<<' | '>>'
+                  | '..' | '..='
+
+call_expr       ::= expr '(' [ arg_list ] ')'
+                  | expr '::<' type_list '>' '(' [ arg_list ] ')'  (* turbofish *)
+
+arg_list        ::= arg { ',' arg }
+
+arg             ::= expr
+                  | identifier ':' expr                (* 命名参数 *)
+
+method_call_expr ::= expr '.' identifier [ '::<' type_list '>' ] '(' [ arg_list ] ')'
+
+index_expr      ::= expr '[' expr ']'
+
+field_access_expr ::= expr '.' identifier
+                    | expr '.' integer_literal         (* 元组字段访问 *)
+
+block_expr      ::= '{' { stmt } [ expr ] '}'
+
+if_expr         ::= 'if' expr fn_body [ 'else' (if_expr | fn_body) ]
+
+match_expr      ::= 'match' expr '{' { match_arm } '}'
+
+match_arm       ::= pattern [ 'if' expr ] '=>' expr NEWLINE
+
+lambda_expr     ::= '|' [ param_list ] '|' expr
+                  | '|' [ param_list ] '|' fn_body
+
+await_expr      ::= 'await' expr
+                  | 'await' '.' 'all'  '(' expr ')'
+                  | 'await' '.' 'race' '(' expr ')'
+
+pipe_expr       ::= expr '|>' expr
+                  | expr '|>' identifier               (* 简写：|> func 等价于 |> func() *)
+
+try_expr        ::= expr '?'                           (* Result/Option 传播 *)
+
+force_expr      ::= expr '!'                           (* 强制展开（编译期证明或运行时panic）*)
+
+record_expr     ::= type_name '{' { record_field } '}'
+
+record_field    ::= identifier ':' expr ','
+                  | identifier ','                     (* 同名简写 *)
+
+record_update_expr ::= expr 'with' '{' { record_field } '}'
+
+list_expr       ::= '[' [ list_items ] ']'
+
+list_items      ::= expr { ',' expr } [ ',' ]
+                  | expr ',' '..' expr                 (* 扩展 *)
+
+tuple_expr      ::= '(' expr ',' expr { ',' expr } ')'
+
+type_ascription ::= expr ':' type
+
+type_list       ::= type { ',' type }
+
+(* ============================================================ *)
+(*  模式                                                         *)
+(* ============================================================ *)
+
+pattern         ::= literal_pat
+                  | wildcard_pat
+                  | identifier_pat
+                  | tuple_pat
+                  | record_pat
+                  | enum_pat
+                  | list_pat
+                  | range_pat
+                  | or_pat
+                  | guard_pat
+                  | bind_pat
+
+literal_pat     ::= literal
+
+wildcard_pat    ::= '_'
+
+identifier_pat  ::= identifier                         (* 绑定或单元枚举变体 *)
+
+tuple_pat       ::= '(' pattern { ',' pattern } ')'
+
+record_pat      ::= type_name '{' { record_pat_field } [ '..' ] '}'
+                  | '{' { record_pat_field } [ '..' ] '}'  (* 推断类型 *)
+
+record_pat_field ::= identifier ':' pattern ','
+                   | identifier ','                    (* 同名简写 *)
+
+enum_pat        ::= type_name '(' pattern { ',' pattern } ')'
+                  | type_name '{' { record_pat_field } '}'
+
+list_pat        ::= '[' ']'                            (* 空列表 *)
+                  | '[' pattern { ',' pattern } ']'   (* 精确匹配 *)
+                  | '[' pattern { ',' pattern } ',' '..' identifier ']'  (* 头+尾 *)
+
+range_pat       ::= expr '..' expr
+                  | expr '..=' expr
+
+or_pat          ::= pattern '|' pattern
+
+guard_pat       ::= (* 在 match_arm 中：pattern 'if' expr *)
+
+bind_pat        ::= identifier '@' pattern             (* 整体绑定 *)
+
+(* ============================================================ *)
+(*  词法元素                                                     *)
+(* ============================================================ *)
+
+identifier      ::= LETTER { LETTER | DIGIT | '_' }
+
+LETTER          ::= 'a'..'z' | 'A'..'Z' | '_'
+DIGIT           ::= '0'..'9'
+HEX_DIGIT       ::= DIGIT | 'a'..'f' | 'A'..'F'
+BIN_DIGIT       ::= '0' | '1'
+OCT_DIGIT       ::= '0'..'7'
+
+NEWLINE         ::= '\n' | '\r\n'
+                  | ';'  (* 可选的语句分隔符 *)
+
+WHITESPACE      ::= ' ' | '\t' | '\r' | '\n'   (* 忽略 *)
+
+LINE_COMMENT    ::= '//' { any_char_except_newline }   (* 忽略 *)
+BLOCK_COMMENT   ::= '/*' { any_char | BLOCK_COMMENT } '*/'  (* 忽略，支持嵌套 *)

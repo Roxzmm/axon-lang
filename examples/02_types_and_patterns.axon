@@ -1,0 +1,243 @@
+// ============================================================
+// Axon 语言示例 02：类型系统和模式匹配
+// ============================================================
+
+module Examples.TypesAndPatterns
+
+// ============================================================
+// 代数数据类型（ADT）
+// ============================================================
+
+// 简单枚举
+type Color = Red | Green | Blue | Yellow
+
+// 带数据的枚举（ADT）
+type Shape =
+    | Circle    { radius: Float }
+    | Rectangle { width: Float, height: Float }
+    | Triangle  { base: Float, height: Float }
+    | Point
+
+// 递归类型
+type Tree<T> =
+    | Leaf
+    | Node { value: T, left: Tree<T>, right: Tree<T> }
+
+// Option 和 Result（标准库内置，这里展示原理）
+type MyOption<T> = Some(T) | None
+type MyResult<T, E> = Ok(T) | Err(E)
+
+// JSON 数据类型
+type Json =
+    | JsonNull
+    | JsonBool(Bool)
+    | JsonNumber(Float)
+    | JsonString(String)
+    | JsonArray(List<Json>)
+    | JsonObject(Map<String, Json>)
+
+// ============================================================
+// 模式匹配
+// ============================================================
+
+fn area(shape: Shape) -> Float {
+    match shape {
+        Circle    { radius }        => 3.14159 * radius * radius
+        Rectangle { width, height } => width * height
+        Triangle  { base, height }  => 0.5 * base * height
+        Point                       => 0.0
+    }
+    // 编译器确保所有变体都被处理！
+}
+
+fn colorName(c: Color) -> String {
+    match c {
+        Red    => "red"
+        Green  => "green"
+        Blue   => "blue"
+        Yellow => "yellow"
+    }
+}
+
+// 嵌套模式
+fn describeTree<T: Show>(tree: Tree<T>) -> String {
+    match tree {
+        Leaf                         => "leaf"
+        Node { value, left: Leaf, right: Leaf } =>
+            "leaf node: {value}"
+        Node { value, left, right }  =>
+            "node: {value}, left={describeTree(left)}, right={describeTree(right)}"
+    }
+}
+
+// 守卫条件
+fn classify(n: Int) -> String {
+    match n {
+        0               => "zero"
+        n if n < 0      => "negative: {n}"
+        n if n < 10     => "small: {n}"
+        n if n < 100    => "medium: {n}"
+        n if n % 2 == 0 => "large even: {n}"
+        n               => "large odd: {n}"
+    }
+}
+
+// 元组模式
+fn describePair(pair: (Int, Int)) -> String {
+    match pair {
+        (0, 0)   => "origin"
+        (x, 0)   => "on x-axis at {x}"
+        (0, y)   => "on y-axis at {y}"
+        (x, y) if x == y => "on diagonal at {x}"
+        (x, y)   => "point ({x}, {y})"
+    }
+}
+
+// 列表模式
+fn sumList(nums: List<Int>) -> Int {
+    match nums {
+        []         => 0
+        [x, ..rest] => x + sumList(rest)
+    }
+}
+
+fn firstTwo<T>(items: List<T>) -> Option<(T, T)> {
+    match items {
+        [a, b, ..]  => Some((a, b))
+        _           => None
+    }
+}
+
+// @ 绑定（整体绑定 + 解构）
+fn processNonEmpty<T>(items: List<T>) -> String {
+    match items {
+        all @ [_, _, ..] => "Has at least 2 items: {all |> List.len()} total"
+        [x]             => "Single item"
+        []              => "Empty"
+    }
+}
+
+// ============================================================
+// 精化类型
+// ============================================================
+
+type PositiveInt = Int    where self > 0
+type Port        = Int    where self >= 1 and self <= 65535
+type Email       = String where String.contains(self, "@")
+type Percentage  = Float  where self >= 0.0 and self <= 100.0
+
+// 使用精化类型
+fn divide(a: Int, b: PositiveInt) -> Int {
+    a / b  // 安全！编译器知道 b > 0
+}
+
+fn discountedPrice(price: Float, discount: Percentage) -> Float {
+    price * (1.0 - discount / 100.0)
+}
+
+// 从运行时值构建精化类型（验证）
+fn parsePort(s: String) -> Result<Port, String> {
+    match Int.parse(s) {
+        Err(_) => Err("Not a number: {s}")
+        Ok(n)  => Port.refine(n)
+                      |> Result.map_err(|_| "Port out of range: {n}")
+    }
+}
+
+// ============================================================
+// Record 类型和更新语法
+// ============================================================
+
+type Person = {
+    name:  String
+    age:   Int where self >= 0
+    email: Option<String>
+}
+
+type Address = {
+    street: String
+    city:   String
+    zip:    String
+}
+
+type Employee = {
+    person:  Person
+    address: Address
+    salary:  Float where self > 0.0
+}
+
+fn birthdayBump(p: Person) -> Person {
+    // 记录更新：创建新记录，修改指定字段
+    p with { age: p.age + 1 }
+}
+
+fn promote(emp: Employee, raise: Float) -> Employee {
+    emp with { salary: emp.salary * (1.0 + raise) }
+}
+
+fn testRecords() -> Unit | IO {
+    let alice = Person {
+        name:  "Alice",
+        age:   30,
+        email: Some("alice@example.com")
+    }
+
+    let older_alice = birthdayBump(alice)
+    print("{older_alice.name} is now {older_alice.age}")
+
+    // 解构
+    let Person { name, age, email } = alice
+    print("Name: {name}, Age: {age}")
+
+    // 部分解构（忽略 email）
+    let Person { name: n, age: a, .. } = alice
+    print("{n} is {a}")
+
+    // 嵌套解构
+    let emp = Employee {
+        person:  alice,
+        address: Address { street: "123 Main St", city: "Springfield", zip: "12345" },
+        salary:  50000.0
+    }
+
+    let Employee {
+        person: Person { name: empName, .. },
+        address: Address { city, .. },
+        salary
+    } = emp
+
+    print("{empName} lives in {city}, salary: {salary}")
+}
+
+// ============================================================
+// 泛型类型实例
+// ============================================================
+
+fn treeInsert<T: Ord>(tree: Tree<T>, val: T) -> Tree<T> {
+    match tree {
+        Leaf => Node { value: val, left: Leaf, right: Leaf }
+        Node { value, left, right } =>
+            match val.compare(value) {
+                Less    => Node { value, left: treeInsert(left, val), right }
+                Equal   => tree  // 已存在，不重复插入
+                Greater => Node { value, left, right: treeInsert(right, val) }
+            }
+    }
+}
+
+fn treeToList<T>(tree: Tree<T>) -> List<T> {
+    match tree {
+        Leaf                      => []
+        Node { value, left, right } =>
+            treeToList(left) ++ [value] ++ treeToList(right)
+    }
+}
+
+fn testTree() -> Unit | IO {
+    let nums = [5, 3, 7, 1, 4, 6, 8]
+
+    let tree = nums |> List.fold(Leaf, treeInsert)
+    let sorted = treeToList(tree)
+
+    print("Sorted: {sorted}")  // [1, 3, 4, 5, 6, 7, 8]
+}
