@@ -1,0 +1,205 @@
+// ============================================================
+// Axon Language Full Demo
+// 展示所有核心特性：类型系统、模式匹配、Agent、函数式操作
+// ============================================================
+
+module Demo.Full
+
+// ── 1. 代数数据类型和模式匹配 ───────────────────────────────
+
+type Shape =
+    | Circle { r: Float }
+    | Rect   { w: Float, h: Float }
+    | Triangle { b: Float, h: Float }
+
+fn area(shape: Shape) -> Float {
+    match shape {
+        Circle   { r }    => 3.14159 * r * r
+        Rect     { w, h } => w * h
+        Triangle { b, h } => 0.5 * b * h
+    }
+}
+
+fn describeShape(shape: Shape) -> String {
+    match shape {
+        Circle   { r }    => "Circle with radius " + str(r) + ", area = " + str(area(shape))
+        Rect     { w, h } => "Rectangle " + str(w) + "x" + str(h) + ", area = " + str(area(shape))
+        Triangle { b, h } => "Triangle base=" + str(b) + " height=" + str(h) + ", area = " + str(area(shape))
+    }
+}
+
+// ── 2. Option 类型（无 null） ─────────────────────────────────
+
+fn safeDiv(a: Int, b: Int) -> String {
+    if b == 0 {
+        "Error: division by zero"
+    } else {
+        "Result: " + str(a / b)
+    }
+}
+
+fn findFirst(items: List<Int>, pred: Int -> Bool) -> String {
+    let result = list_find(items, pred)
+    match result {
+        Some(x) => "Found: " + str(x)
+        None    => "Not found"
+    }
+}
+
+// ── 3. 高阶函数和管道操作符 ──────────────────────────────────
+
+fn transformNumbers() -> List<Int> {
+    let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let result = list_filter(nums, |x| x % 2 == 0)
+    let doubled = list_map(result, |x| x * 2)
+    doubled
+}
+
+fn pipelineDemo(nums: List<Int>) -> Int {
+    // 模拟管道：filter evens, double, sum
+    let evens   = list_filter(nums, |x| x % 2 == 0)
+    let doubled = list_map(evens, |x| x * 2)
+    let total   = list_sum(doubled)
+    total
+}
+
+// ── 4. 递归函数 ───────────────────────────────────────────────
+
+fn fibonacci(n: Int) -> Int {
+    if n <= 1 {
+        n
+    } else {
+        fibonacci(n - 1) + fibonacci(n - 2)
+    }
+}
+
+fn factorial(n: Int) -> Int {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+// ── 5. Agent：任务队列系统 ────────────────────────────────────
+
+agent TaskQueue {
+    state {
+        tasks:     List<String> = []
+        completed: List<String> = []
+        total_processed: Int   = 0
+    }
+
+    on AddTask(task: String) -> Int {
+        tasks = list_append(tasks, task)
+        list_len(tasks)
+    }
+
+    on ProcessNext -> String {
+        match list_head(tasks) {
+            None      => "Queue empty"
+            Some(task) => {
+                tasks     = list_drop(tasks, 1)
+                completed = list_append(completed, task)
+                total_processed = total_processed + 1
+                "Processed: " + task
+            }
+        }
+    }
+
+    on GetStats -> String {
+        "Pending: " + str(list_len(tasks)) +
+        " | Completed: " + str(list_len(completed)) +
+        " | Total: " + str(total_processed)
+    }
+
+    on GetPending -> List<String> = tasks
+    on GetCompleted -> List<String> = completed
+}
+
+// ── 6. 主程序 ─────────────────────────────────────────────────
+
+fn printSection(title: String) -> Unit {
+    print("")
+    print("── " + title + " " + str(list_map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], |_| "─")) + "")
+}
+
+fn main() -> Unit {
+    print("╔══════════════════════════════════════════╗")
+    print("║      Axon Language Full Demo v0.1        ║")
+    print("║   AI-Native Programming Language         ║")
+    print("╚══════════════════════════════════════════╝")
+
+    // 1. 代数数据类型
+    printSection("1. Algebraic Data Types & Pattern Matching")
+    let shapes = [
+        Circle { r: 5.0 },
+        Rect { w: 4.0, h: 3.0 },
+        Triangle { b: 6.0, h: 4.0 }
+    ]
+    for shape in shapes {
+        print("  " + describeShape(shape))
+    }
+
+    // 2. Option 类型
+    printSection("2. Option Type (no null!)")
+    print("  " + safeDiv(10, 3))
+    print("  " + safeDiv(10, 0))
+    let nums = [1, 3, 5, 7, 8, 9, 10]
+    print("  " + findFirst(nums, |x| x % 2 == 0))
+    print("  " + findFirst([1, 3, 5], |x| x > 10))
+
+    // 3. 高阶函数
+    printSection("3. Higher-Order Functions & Pipelines")
+    let evens_doubled = transformNumbers()
+    print("  Even numbers doubled: " + str(evens_doubled))
+    let total = pipelineDemo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    print("  Pipeline result (sum of doubled evens 1..10): " + str(total))
+
+    // 4. 递归
+    printSection("4. Recursive Functions")
+    let fibs = list_map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], |n| fibonacci(n))
+    print("  Fibonacci: " + str(fibs))
+    print("  10! = " + str(factorial(10)))
+
+    // 5. Agents
+    printSection("5. Agent-Based Concurrency")
+    let queue = spawn TaskQueue
+
+    queue.send(AddTask("Parse user input"))
+    queue.send(AddTask("Validate data"))
+    queue.send(AddTask("Call LLM API"))
+    queue.send(AddTask("Format response"))
+    queue.send(AddTask("Send to client"))
+
+    let count = queue.ask(GetPending)
+    print("  Tasks queued: " + str(list_len(count)))
+
+    print("  " + queue.ask(ProcessNext))
+    print("  " + queue.ask(ProcessNext))
+    print("  " + queue.ask(ProcessNext))
+
+    print("  Stats: " + queue.ask(GetStats))
+    let pending = queue.ask(GetPending)
+    print("  Remaining: " + str(pending))
+
+    // 6. 字符串操作
+    printSection("6. String Operations")
+    let words = "Axon is a language for AI agents"
+    let parts = split(words, " ")
+    print("  Word count: " + str(list_len(parts)))
+    let upper_parts = list_map(parts, |w| upper(w))
+    print("  Uppercased: " + str(upper_parts))
+    let long_words = list_filter(parts, |w| len(w) > 2)
+    print("  Words > 2 chars: " + str(long_words))
+
+    // 7. 数学
+    printSection("7. Math & Computation")
+    let squares = list_map([1, 2, 3, 4, 5], |n| n * n)
+    print("  Squares 1-5: " + str(squares))
+    let sum = list_sum(squares)
+    print("  Sum of squares: " + str(sum))
+    print("  sqrt(144) = " + str(sqrt(144.0)))
+    print("  pow(2, 10) = " + str(pow(2.0, 10.0)))
+
+    print("")
+    print("╔══════════════════════════════════════════╗")
+    print("║         All demos completed! ✓           ║")
+    print("╚══════════════════════════════════════════╝")
+}

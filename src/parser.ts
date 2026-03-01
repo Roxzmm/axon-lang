@@ -446,6 +446,18 @@ export class Parser {
 
   private parseType(): TypeExpr {
     const span = this.span();
+    const base = this.parseBaseType();
+    // Function type: BaseType -> RetType  (right-associative)
+    if (this.check(TokenKind.Arrow)) {
+      this.advance();
+      const ret = this.parseType();
+      return { kind: 'FnType', params: [base], ret, effects: [], span };
+    }
+    return base;
+  }
+
+  private parseBaseType(): TypeExpr {
+    const span = this.span();
 
     if (this.check(TokenKind.LParen)) {
       this.advance();
@@ -483,7 +495,26 @@ export class Parser {
       return { kind: 'NameType', name, params, span };
     }
 
+    if (this.check(TokenKind.KwFn)) {
+      return this.parseFnType();
+    }
+
     return { kind: 'InferType', span };
+  }
+
+  private parseFnType(): TypeExpr {
+    const span = this.span();
+    this.expect(TokenKind.KwFn);
+    this.expect(TokenKind.LParen);
+    const params: TypeExpr[] = [];
+    while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) {
+      params.push(this.parseType());
+      if (!this.check(TokenKind.RParen)) this.expect(TokenKind.Comma);
+    }
+    this.expect(TokenKind.RParen);
+    this.expect(TokenKind.Arrow);
+    const ret = this.parseType();
+    return { kind: 'FnType', params, ret, effects: [], span };
   }
 
   // ── Expressions ─────────────────────────────────────────
@@ -852,15 +883,20 @@ export class Parser {
         return { kind: 'AssignStmt', target: expr, op, value, span };
       }
 
-      // Expression statement (followed by ; or at end of block before })
-      if (this.check(TokenKind.Semicolon) || this.checkStatementEnd()) {
-        this.skipSemicolon();
+      // Explicit semicolon → always a statement
+      if (this.check(TokenKind.Semicolon)) {
+        this.advance();
         return { kind: 'ExprStmt', expr, span };
       }
 
-      // It's the tail expression — restore position
-      this.pos = savedPos;
-      return null;
+      // End of block or file → tail expression (restore and let parseBlock handle it)
+      if (this.check(TokenKind.RBrace) || this.check(TokenKind.EOF)) {
+        this.pos = savedPos;
+        return null;
+      }
+
+      // Next token starts a new statement → treat as ExprStmt (no semicolon needed)
+      return { kind: 'ExprStmt', expr, span };
 
     } catch {
       this.pos = savedPos;
@@ -1083,7 +1119,11 @@ export class Parser {
   private cur(): Token { return this.tokens[this.pos] ?? { kind: TokenKind.EOF, value: '', line: 0, col: 0 }; }
   private advance(): Token { return this.tokens[this.pos++] ?? { kind: TokenKind.EOF, value: '', line: 0, col: 0 }; }
   private check(kind: TokenKind): boolean { return this.cur().kind === kind; }
-  private checkIdent(): boolean { return this.cur().kind === TokenKind.Ident || this.cur().kind === TokenKind.KwFrom || this.cur().kind === TokenKind.KwTo; }
+  private checkIdent(): boolean {
+    const k = this.cur().kind;
+    return k === TokenKind.Ident || k === TokenKind.KwFrom || k === TokenKind.KwTo
+        || k === TokenKind.KwSend || k === TokenKind.KwAgent;
+  }
   private span(): Span { const t = this.cur(); return { line: t.line, col: t.col }; }
 
   private expect(kind: TokenKind): Token {
@@ -1097,7 +1137,8 @@ export class Parser {
     if (tok.kind === TokenKind.Ident || tok.kind === TokenKind.KwFrom ||
         tok.kind === TokenKind.KwTo || tok.kind === TokenKind.KwState ||
         tok.kind === TokenKind.KwHot || tok.kind === TokenKind.KwWith ||
-        tok.kind === TokenKind.KwOn) {
+        tok.kind === TokenKind.KwOn || tok.kind === TokenKind.KwSend ||
+        tok.kind === TokenKind.KwAgent) {
       return this.advance().value;
     }
     throw this.error(`Expected identifier, got '${tok.value}' (${tok.kind})`);

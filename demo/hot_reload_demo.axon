@@ -1,0 +1,63 @@
+// ============================================================
+// Axon Demo: Hot Reload
+// 展示：在不重启的情况下更新运行中的代码
+//
+// 运行方法:
+//   axon run demo/hot_reload_demo.axon --watch
+//
+// 然后修改 greetMessage 函数或 tickInterval，保存，观察输出变化！
+// ============================================================
+
+module Demo.HotReload
+
+// 🔥 修改这个函数，保存文件，看到输出立即变化！
+fn greetMessage(n: Int) -> String {
+    "Tick #" + str(n) + " — Axon is running! (edit this message and save)"
+}
+
+// 🔥 修改这个来改变消息格式
+fn formatTick(n: Int, msg: String) -> String {
+    "[" + str(n) + "] " + msg
+}
+
+agent TickAgent {
+    state {
+        tick: Int = 0
+        messages: List<String> = []
+    }
+
+    on Tick -> String {
+        tick = tick + 1
+        let msg = greetMessage(tick)
+        let formatted = formatTick(tick, msg)
+        messages = list_append(messages, formatted)
+        formatted
+    }
+
+    on GetTick -> Int = tick
+    on GetMessages -> List<String> = messages
+}
+
+fn main() -> Unit {
+    print("=== Hot Reload Demo ===")
+    print("Tip: Edit greetMessage() or formatTick() and save the file!")
+    print("The running agent will update immediately without restart.")
+    print("")
+
+    let agent = spawn TickAgent
+
+    // Run 3 ticks and show output
+    let msg1 = agent.ask(Tick)
+    print(msg1)
+
+    let msg2 = agent.ask(Tick)
+    print(msg2)
+
+    let msg3 = agent.ask(Tick)
+    print(msg3)
+
+    print("")
+    print("Total ticks: " + str(agent.ask(GetTick)))
+    print("")
+    print("In --watch mode: edit this file, save, and see the change!")
+}

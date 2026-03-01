@@ -1,0 +1,67 @@
+// ============================================================
+// Axon Demo 1: Counter Agent
+// 展示：Agent 定义、状态、消息传递
+// ============================================================
+
+module Demo.Counter
+
+agent Counter {
+    state {
+        count: Int = 0
+        history: List<Int> = []
+    }
+
+    on Increment -> Int {
+        history = list_prepend(count, history)
+        count = count + 1
+        count
+    }
+
+    on DecrementBy(n: Int) -> Int {
+        history = list_prepend(count, history)
+        count = count - n
+        count
+    }
+
+    on Reset -> Unit {
+        history = list_prepend(count, history)
+        count = 0
+    }
+
+    on GetCount -> Int = count
+
+    on GetHistory -> List<Int> = history
+}
+
+fn main() -> Unit {
+    print("=== Axon Counter Agent Demo ===")
+    print("")
+
+    let c = spawn Counter
+
+    // send: fire-and-forget (async)
+    c.send(Increment)
+    c.send(Increment)
+    c.send(Increment)
+
+    // ask: request-response
+    let n = c.ask(GetCount)
+    print("After 3 increments: " + str(n))
+
+    let n2 = c.ask(DecrementBy(1))
+    print("After decrement by 1: " + str(n2))
+
+    c.send(Reset)
+    let n3 = c.ask(GetCount)
+    print("After reset: " + str(n3))
+
+    c.send(Increment)
+    c.send(Increment)
+    let final = c.ask(GetCount)
+    print("Final count: " + str(final))
+
+    let hist = c.ask(GetHistory)
+    print("History: " + str(hist))
+    print("")
+    print("✓ Counter Agent demo complete!")
+}

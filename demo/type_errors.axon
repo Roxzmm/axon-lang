@@ -1,0 +1,44 @@
+// ============================================================
+// Axon Demo 2: Type Error Detection
+// 展示：编译器在运行前捕获类型错误
+// ============================================================
+
+module Demo.TypeErrors
+
+// 错误1: if 条件不是 Bool
+fn badCondition(x: Int) -> String {
+    if x {     // Type error: if condition must be Bool, got Int
+        "positive"
+    } else {
+        "non-positive"
+    }
+}
+
+// 正确写法
+fn goodCondition(x: Int) -> String {
+    if x > 0 {
+        "positive"
+    } else {
+        "non-positive"
+    }
+}
+
+// 错误2: 函数返回类型不匹配
+fn wrongReturn(x: Int) -> String {
+    x + 1   // Type error: declared String, body returns Int
+}
+
+// 正确写法
+fn correctReturn(x: Int) -> String {
+    str(x + 1)
+}
+
+// 正确的代码（这些会正常运行）
+fn main() -> Unit {
+    print("Type checking demo")
+    print("This file has intentional type errors.")
+    print("Run: axon check demo/type_errors.axon")
+    print("")
+    print(goodCondition(5))
+    print(correctReturn(41))
+}
