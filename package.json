@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "dev": "ts-node src/main.ts",
     "run:demo": "ts-node src/main.ts run demo/counter.axon",
     "run:all": "ts-node src/main.ts run demo/full_demo.axon",
