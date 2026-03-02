@@ -68,6 +68,8 @@ export type Expr =
   | { kind: 'Continue';     span: Span }
   | { kind: 'TypeAscription'; expr: Expr; ty: TypeExpr; span: Span }
   | { kind: 'EnumVariant';  typeName: string; variant: string; fields: Expr[] | { name: string; value: Expr }[]; span: Span }
+  | { kind: 'Loop';         body: Expr; span: Span }
+  | { kind: 'Range';        lo: Expr; hi: Expr; inclusive: boolean; span: Span }
 
 export interface MatchArm {
   pattern: Pattern;
@@ -90,7 +92,6 @@ export type Stmt =
   | { kind: 'ExprStmt';   expr: Expr; span: Span }
   | { kind: 'ForStmt';    pat: Pattern; iter: Expr; body: Expr; span: Span }
   | { kind: 'WhileStmt';  cond: Expr; body: Expr; span: Span }
-  | { kind: 'LoopStmt';   body: Expr; span: Span }
 
 // ─── Declarations ────────────────────────────────────────────
 

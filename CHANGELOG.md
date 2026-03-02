@@ -9,6 +9,24 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.6] - 2026-03-03
+
+### Parser
+- `loop` is now an expression (not just a statement): `let x = loop { break 42 }` works
+- `LoopStmt` removed from AST/parser/interpreter/checker — `loop` always produces `Loop` expr wrapped in `ExprStmt`
+- Range literals: `1..=5` (inclusive) and `0..n` (exclusive) produce `List<Int>` — usable in `for` loops and pipelines
+- Record update syntax: `expr with { field: val, ... }` — produces updated copy, original unchanged
+  - Guard: only parsed when `with` is on same line as preceding expression (prevents ambiguity)
+  - Range `hi` bound parsed with `parsePostfix()` (not just `parsePrimary`), so `1..foo()` and `1..arr[0]` work
+
+### Type Checker
+- Added `Loop` and `Range` expression cases (both return `T_UNKNOWN`)
+
+### Tests
+- Added test 30: `30_loop_range_record_update.axon` — covers loop-as-expr, inclusive/exclusive ranges, ranges in `for` and pipelines, record update single and multi-field
+
+---
+
 ## [0.2.5] - 2026-03-03
 
 ### Parser

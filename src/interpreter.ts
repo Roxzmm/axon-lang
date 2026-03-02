@@ -960,6 +960,30 @@ export class Interpreter {
 
       case 'TypeAscription': return this.evalExpr(expr.expr, env);
 
+      case 'Loop': {
+        while (true) {
+          try {
+            await this.evalExpr(expr.body, env);
+          } catch (e) {
+            if (e instanceof BreakSignal)    return e.value ?? UNIT;
+            if (e instanceof ContinueSignal) continue;
+            throw e;
+          }
+        }
+      }
+
+      case 'Range': {
+        const lo = await this.evalExpr(expr.lo, env);
+        const hi = await this.evalExpr(expr.hi, env);
+        if (lo.tag !== ValueTag.Int || hi.tag !== ValueTag.Int) {
+          throw new RuntimeError('Range bounds must be Int');
+        }
+        const end = expr.inclusive ? hi.value + 1n : hi.value;
+        const items: AxonValue[] = [];
+        for (let i = lo.value; i < end; i++) items.push(mkInt(i));
+        return mkList(items);
+      }
+
       default:
         throw new RuntimeError(`Unknown expression kind: ${(expr as any).kind}`);
     }
@@ -1262,18 +1286,6 @@ export class Interpreter {
         break;
       }
 
-      case 'LoopStmt': {
-        while (true) {
-          try {
-            await this.evalExpr(stmt.body, env);
-          } catch (e) {
-            if (e instanceof BreakSignal)    break;
-            if (e instanceof ContinueSignal) continue;
-            throw e;
-          }
-        }
-        break;
-      }
     }
   }
 

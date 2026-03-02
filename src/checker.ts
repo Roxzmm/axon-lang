@@ -677,6 +677,17 @@ export class TypeChecker {
         return baseTy;
       }
 
+      case 'Loop': {
+        this.checkExpr(expr.body, env);
+        return T_UNKNOWN;
+      }
+
+      case 'Range': {
+        this.checkExpr(expr.lo, env);
+        this.checkExpr(expr.hi, env);
+        return T_UNKNOWN;
+      }
+
       default: return T_UNKNOWN;
     }
   }
@@ -716,10 +727,6 @@ export class TypeChecker {
       }
       case 'WhileStmt': {
         this.checkExpr(stmt.cond, env);
-        this.checkExpr(stmt.body, env);
-        break;
-      }
-      case 'LoopStmt': {
         this.checkExpr(stmt.body, env);
         break;
       }

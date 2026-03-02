@@ -718,6 +718,32 @@ export class Parser {
         continue;
       }
 
+      // record update: expr with { field: val, ... }
+      if (this.check(TokenKind.KwWith) && curLine === prevLine) {
+        this.advance();
+        this.expect(TokenKind.LBrace);
+        const fields: { name: string; value: Expr }[] = [];
+        while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
+          const fname = this.expectIdent();
+          this.expect(TokenKind.Colon);
+          const fval = this.parseExpr();
+          fields.push({ name: fname, value: fval });
+          if (!this.check(TokenKind.RBrace)) this.expect(TokenKind.Comma);
+        }
+        this.expect(TokenKind.RBrace);
+        expr = { kind: 'RecordUpdate', base: expr, fields, span };
+        continue;
+      }
+
+      // range: expr..hi or expr..=hi — only on same line
+      if ((this.check(TokenKind.DotDot) || this.check(TokenKind.DotDotEq)) && curLine === prevLine) {
+        const inclusive = this.check(TokenKind.DotDotEq);
+        this.advance();
+        const hi = this.parsePostfix();
+        expr = { kind: 'Range', lo: expr, hi, inclusive, span };
+        continue;
+      }
+
       break;
     }
 
@@ -840,6 +866,13 @@ export class Parser {
       this.advance();
       const e = this.parseExpr();
       return { kind: 'Await', expr: e, span };
+    }
+
+    // loop expression: loop { ... break value ... }
+    if (tok.kind === TokenKind.KwLoop) {
+      this.advance();
+      const body = this.parseBlock();
+      return { kind: 'Loop', body, span };
     }
 
     // spawn
@@ -977,12 +1010,6 @@ export class Parser {
       const cond = this.parseExpr();
       const body = this.parseBlock();
       return { kind: 'WhileStmt', cond, body, span };
-    }
-
-    if (this.check(TokenKind.KwLoop)) {
-      this.advance();
-      const body = this.parseBlock();
-      return { kind: 'LoopStmt', body, span };
     }
 
     // Assignment or expression statement

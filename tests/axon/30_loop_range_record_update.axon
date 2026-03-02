@@ -1,0 +1,79 @@
+module Test
+
+type Point { x: Int, y: Int }
+
+fn main() -> Unit {
+    // --- loop as expression ---
+
+    // Basic loop with break value
+    let x = loop {
+        break 42
+    }
+    assert_eq(x, 42, "loop expr basic")
+
+    // Loop with counter, break with computed value
+    let mut n = 0
+    let result = loop {
+        n = n + 1
+        if n == 5 {
+            break n * 2
+        }
+    }
+    assert_eq(result, 10, "loop expr break computed")
+
+    // Loop with continue
+    let mut sum = 0
+    let mut i = 0
+    let _ = loop {
+        i = i + 1
+        if i > 10 { break 0 }
+        if i % 2 == 1 { continue }
+        sum = sum + i
+    }
+    assert_eq(sum, 30, "loop expr with continue (sum of evens 2..10)")
+
+    // --- range literals ---
+
+    // Exclusive range 0..5 → [0,1,2,3,4]
+    let r1 = 0..5
+    assert_eq(list_len(r1), 5, "exclusive range length")
+    assert_eq(option_unwrap(list_get(r1, 0)), 0, "range starts at 0")
+    assert_eq(option_unwrap(list_get(r1, 4)), 4, "range ends at 4")
+
+    // Inclusive range 1..=5 → [1,2,3,4,5]
+    let r2 = 1..=5
+    assert_eq(list_len(r2), 5, "inclusive range length")
+    assert_eq(option_unwrap(list_get(r2, 0)), 1, "inclusive range starts at 1")
+    assert_eq(option_unwrap(list_get(r2, 4)), 5, "inclusive range ends at 5")
+
+    // for loop with range
+    let mut total = 0
+    for k in 1..=10 {
+        total = total + k
+    }
+    assert_eq(total, 55, "for range 1..=10 sum")
+
+    // range in pipeline
+    let sq_sum = 1..=4
+        |> list_map(|n| n * n)
+        |> list_sum()
+    assert_eq(sq_sum, 30, "range pipeline 1^2+2^2+3^2+4^2=30")
+
+    // --- record update with ---
+
+    let p1 = Point { x: 1, y: 2 }
+    let p2 = p1 with { x: 10 }
+    assert_eq(p2.x, 10, "record update x changed")
+    assert_eq(p2.y, 2, "record update y unchanged")
+
+    // Update multiple fields
+    let p3 = p1 with { x: 20, y: 30 }
+    assert_eq(p3.x, 20, "record update multi x")
+    assert_eq(p3.y, 30, "record update multi y")
+
+    // Original unchanged
+    assert_eq(p1.x, 1, "original x unchanged")
+    assert_eq(p1.y, 2, "original y unchanged")
+
+    print("PASS")
+}

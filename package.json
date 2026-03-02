@@ -1,6 +1,6 @@
 {
   "name": "axon-lang",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Axon - A programming language designed for AI Agents",
   "main": "dist/main.js",
   "bin": {
