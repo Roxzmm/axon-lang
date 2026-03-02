@@ -380,7 +380,10 @@ src/
 
 spec/                 # Language specification (authoritative)
 tests/axon/           # 25 passing test programs
-examples/             # Runnable example programs
+examples/             # Runnable example programs (01–08)
+  # 01 hello world · 02 types & patterns · 03 error handling
+  # 04 agents · 05 hot reload · 06 AI assistant
+  # 07 integration (all features) · 08 type checking demo
 ```
 
 ---

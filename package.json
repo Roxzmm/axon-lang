@@ -10,10 +10,9 @@
     "build": "tsc",
     "prepare": "tsc",
     "dev": "ts-node src/main.ts",
-    "run:demo": "ts-node src/main.ts run demo/counter.axon",
-    "run:all": "ts-node src/main.ts run demo/full_demo.axon",
+    "run:example": "ts-node src/main.ts run examples/07_integration.axon",
     "check": "ts-node src/main.ts check",
-    "watch": "ts-node src/main.ts run demo/hot_reload_demo.axon --watch"
+    "watch": "ts-node src/main.ts run examples/05_hot_reload.axon --watch"
   },
   "dependencies": {
     "chalk": "^4.1.2"

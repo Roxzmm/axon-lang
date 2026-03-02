@@ -1,9 +1,13 @@
 // ============================================================
-// Axon Demo 2: Type Error Detection
+// Example 08: Type Checking
 // 展示：编译器在运行前捕获类型错误
+//
+// 此文件包含故意的类型错误，用于演示类型检查器。
+// 运行: axon check examples/08_type_checking.axon  (会报告错误)
+// 运行: axon run  examples/08_type_checking.axon  (只执行正确的代码)
 // ============================================================
 
-module Demo.TypeErrors
+module Examples.TypeChecking
 
 // 错误1: if 条件不是 Bool
 fn badCondition(x: Int) -> String {
