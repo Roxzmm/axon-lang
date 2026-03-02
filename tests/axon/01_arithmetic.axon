@@ -1,0 +1,61 @@
+// ============================================================
+// Test: Arithmetic — operators, precedence, negation, coercion
+// ============================================================
+module Tests.Arithmetic
+
+fn main() -> Unit {
+    // ── Integer arithmetic ──────────────────────────────────
+    assert(1 + 2 == 3,      "1 + 2 == 3")
+    assert(10 - 3 == 7,     "10 - 3 == 7")
+    assert(4 * 5 == 20,     "4 * 5 == 20")
+    assert(10 / 2 == 5,     "10 / 2 == 5")
+    assert(10 % 3 == 1,     "10 % 3 == 1")
+    assert(2 ** 10 == 1024, "2 ** 10 == 1024")
+
+    // ── Operator precedence ─────────────────────────────────
+    assert(2 + 3 * 4 == 14,        "* before +")
+    assert((2 + 3) * 4 == 20,      "parens override precedence")
+    assert(10 - 2 - 3 == 5,        "left-associativity of -")
+    assert(2 ** 3 ** 2 == 512,     "right-associativity of **")
+    assert(10 / 2 / 5 == 1,        "left-associativity of /")
+    assert(1 + 2 * 3 - 4 / 2 == 5, "mixed precedence")
+
+    // ── Unary negation ──────────────────────────────────────
+    assert(-5 < 0,              "negation produces negative")
+    assert(-(-3) == 3,          "double negation")
+    assert(-(2 + 3) == -5,      "negate expression")
+    assert(abs(-7) == 7,        "abs of negative")
+    assert(abs(7) == 7,         "abs of positive")
+
+    // ── Comparison operators ────────────────────────────────
+    assert(1 < 2,    "1 < 2")
+    assert(2 > 1,    "2 > 1")
+    assert(1 <= 1,   "1 <= 1")
+    assert(2 >= 2,   "2 >= 2")
+    assert(3 != 4,   "3 != 4")
+    assert(5 == 5,   "5 == 5")
+    assert(!(3 == 4),"!(3 == 4)")
+
+    // ── Boolean operators ───────────────────────────────────
+    assert(true && true,    "true && true")
+    assert(true || false,   "true || false")
+    assert(!false,          "!false")
+    assert(!(true && false),"!(true && false)")
+    assert(false || true,   "false || true")
+
+    // ── Float arithmetic ─────────────────────────────────────
+    assert(1.5 + 2.5 == 4.0,   "float addition")
+    assert(5.0 / 2.0 == 2.5,   "float division")
+    assert(abs(-3.14) == 3.14, "abs float")
+    assert(sqrt(4.0) == 2.0,   "sqrt(4.0)")
+    assert(pow(2.0, 8.0) == 256.0, "pow(2.0, 8.0)")
+
+    // ── Math builtins ───────────────────────────────────────
+    assert(min(3, 7) == 3,    "min")
+    assert(max(3, 7) == 7,    "max")
+    assert(clamp(5, 1, 10) == 5, "clamp within range")
+    assert(clamp(0, 1, 10) == 1, "clamp below min")
+    assert(clamp(15, 1, 10) == 10, "clamp above max")
+
+    print("PASS: arithmetic")
+}

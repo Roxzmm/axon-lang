@@ -102,11 +102,14 @@ export interface AgentMessage {
 export class AgentRef {
   private queue:     AgentMessage[] = [];
   private processing = false;
+  private stopped    = false;
 
   public state:    Map<string, AxonValue>;
   public handlers: Map<string, AgentHandlerFn>;
   public name:     string;
   public id:       string;
+  // Supervisor callback: called when a handler throws an unhandled error
+  public onCrash?: (ref: AgentRef, error: Error) => void;
 
   constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>) {
     this.name     = name;
@@ -114,6 +117,8 @@ export class AgentRef {
     this.state    = state;
     this.handlers = handlers;
   }
+
+  stop(): void { this.stopped = true; }
 
   send(type: string, args: AxonValue[]): void {
     this.enqueue(type, args).catch(() => {}); // fire-and-forget
@@ -124,6 +129,7 @@ export class AgentRef {
   }
 
   private enqueue(type: string, args: AxonValue[]): Promise<AxonValue> {
+    if (this.stopped) return Promise.reject(new Error(`Agent ${this.name} is stopped`));
     return new Promise<AxonValue>((resolve, reject) => {
       this.queue.push({ type, args, resolve, reject });
       this.drainQueue();
@@ -133,21 +139,29 @@ export class AgentRef {
   private async drainQueue(): Promise<void> {
     if (this.processing) return;
     this.processing = true;
-    while (this.queue.length > 0) {
-      const msg = this.queue.shift()!;
-      try {
-        const handler = this.handlers.get(msg.type);
-        if (!handler) {
-          msg.reject(new Error(`Agent ${this.name}: unknown message type '${msg.type}'`));
-          continue;
+    try {
+      while (this.queue.length > 0) {
+        const msg = this.queue.shift()!;
+        try {
+          const handler = this.handlers.get(msg.type);
+          if (!handler) {
+            msg.reject(new Error(`Agent ${this.name}: unknown message type '${msg.type}'`));
+            continue;
+          }
+          const result = await handler(this.state, msg.args);
+          msg.resolve(result);
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          msg.reject(err);
+          // Notify supervisor (if any) about the crash
+          if (this.onCrash) {
+            try { this.onCrash(this, err); } catch (_) {}
+          }
         }
-        const result = await handler(this.state, msg.args);
-        msg.resolve(result);
-      } catch (e) {
-        msg.reject(e instanceof Error ? e : new Error(String(e)));
       }
+    } finally {
+      this.processing = false;
     }
-    this.processing = false;
   }
 }
 

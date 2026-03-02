@@ -4,7 +4,7 @@
 
 import {
   AxonValue, ValueTag, mkInt, mkFloat, mkString, mkBool, mkList, mkTuple,
-  mkRecord, mkEnum, mkNative, mkOk, mkErr, mkSome, mkNone,
+  mkRecord, mkEnum, mkNative, mkNativeAsync, mkOk, mkErr, mkSome, mkNone,
   UNIT, TRUE, FALSE, displayValue, debugValue, valuesEqual, RuntimeError,
 } from './value';
 import type { Environment } from './env';
@@ -108,9 +108,9 @@ const convFns: Record<string, NativeFn> = {
 const mathFns: Record<string, NativeFn> = {
   abs:   (v) => v.tag === ValueTag.Int ? mkInt(v.value < 0n ? -v.value : v.value) : mkFloat(Math.abs(toNum(v, 'abs'))),
   sqrt:  (v) => mkFloat(Math.sqrt(toNum(v, 'sqrt'))),
-  floor: (v) => mkFloat(Math.floor(toNum(v, 'floor'))),
-  ceil:  (v) => mkFloat(Math.ceil(toNum(v, 'ceil'))),
-  round: (v) => mkFloat(Math.round(toNum(v, 'round'))),
+  floor: (v) => mkInt(Math.floor(toNum(v, 'floor'))),
+  ceil:  (v) => mkInt(Math.ceil(toNum(v, 'ceil'))),
+  round: (v) => mkInt(Math.round(toNum(v, 'round'))),
   pow:   (a, b) => {
     if (a.tag === ValueTag.Int && b.tag === ValueTag.Int && b.value >= 0n) return mkInt(a.value ** b.value);
     return mkFloat(Math.pow(toNum(a, 'pow'), toNum(b, 'pow')));
@@ -122,6 +122,7 @@ const mathFns: Record<string, NativeFn> = {
   log2:  (v) => mkFloat(Math.log2(toNum(v, 'log2'))),
   sin:   (v) => mkFloat(Math.sin(toNum(v, 'sin'))),
   cos:   (v) => mkFloat(Math.cos(toNum(v, 'cos'))),
+  tan:   (v) => mkFloat(Math.tan(toNum(v, 'tan'))),
   PI:    ()  => mkFloat(Math.PI),
   E:     ()  => mkFloat(Math.E),
 };
@@ -129,7 +130,12 @@ const mathFns: Record<string, NativeFn> = {
 // ─── String operations ───────────────────────────────────────
 
 const stringFns: Record<string, NativeFn> = {
-  len:        (v) => mkInt(asStr(v, 'len').length),
+  len:        (v) => {
+    if (v.tag === ValueTag.String) return mkInt(v.value.length);
+    if (v.tag === ValueTag.List)   return mkInt(v.items.length);
+    if (v.tag === ValueTag.Tuple)  return mkInt(v.items.length);
+    throw new RuntimeError(`len: expected String, List, or Tuple, got ${v.tag}`);
+  },
   upper:      (v) => mkString(asStr(v, 'upper').toUpperCase()),
   lower:      (v) => mkString(asStr(v, 'lower').toLowerCase()),
   trim:       (v) => mkString(asStr(v, 'trim').trim()),
@@ -224,7 +230,21 @@ const listFns: Record<string, NativeFn> = {
     return mkList(Array.from({ length: Math.max(0, h - l + 1) }, (_, i) => mkInt(l + i)));
   },
   list_enumerate: (v) => mkList(asList(v, 'enumerate').map((item, i) => mkTuple([mkInt(i), item]))),
-  list_from:   (v) => v,
+  list_from: (v, start) => {
+    const items = asList(v, 'from');
+    const s = Number((start as any)?.value ?? 0n);
+    return mkList(items.slice(s));
+  },
+  // Tuple operations
+  tuple_get: (t, i) => {
+    if (t.tag !== ValueTag.Tuple) throw new RuntimeError('tuple_get: expected tuple');
+    const idx = Number((i as any).value ?? 0n);
+    return t.items[idx] ?? mkNone();
+  },
+  tuple_len: (t) => {
+    if (t.tag !== ValueTag.Tuple) throw new RuntimeError('tuple_len: expected tuple');
+    return mkInt(t.items.length);
+  },
 };
 
 // Higher-order list functions (need interpreter callback)
@@ -382,6 +402,96 @@ const ioFileFns: Record<string, NativeFn> = {
   },
 };
 
+// ─── JSON helpers ─────────────────────────────────────────────
+
+export function jsToAxon(v: any): AxonValue {
+  if (v === null || v === undefined) return mkNone();
+  if (typeof v === 'boolean') return mkBool(v);
+  if (typeof v === 'number') {
+    return Number.isInteger(v) ? mkInt(v) : mkFloat(v);
+  }
+  if (typeof v === 'string') return mkString(v);
+  if (Array.isArray(v)) return mkList(v.map(jsToAxon));
+  if (typeof v === 'object') {
+    const fields = new Map<string, AxonValue>();
+    for (const [k, val] of Object.entries(v)) fields.set(k, jsToAxon(val));
+    return { tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue;
+  }
+  return UNIT;
+}
+
+export function axonToJs(v: AxonValue): any {
+  switch (v.tag) {
+    case ValueTag.Int:    return Number(v.value);
+    case ValueTag.Float:  return v.value;
+    case ValueTag.Bool:   return v.value;
+    case ValueTag.String: return v.value;
+    case ValueTag.Unit:   return null;
+    case ValueTag.List:   return v.items.map(axonToJs);
+    case ValueTag.Tuple:  return v.items.map(axonToJs);
+    case ValueTag.Record: {
+      const obj: Record<string, any> = {};
+      for (const [k, val] of v.fields) obj[k] = axonToJs(val);
+      return obj;
+    }
+    case ValueTag.Enum: {
+      if (v.variant === 'None') return null;
+      if (v.variant === 'Some') return axonToJs(v.fields[0]);
+      if (v.variant === 'Ok')   return axonToJs(v.fields[0]);
+      return { variant: v.variant, fields: v.fields.map(axonToJs) };
+    }
+    default: return displayValue(v);
+  }
+}
+
+const jsonFns: Record<string, NativeFn> = {
+  json_parse: (s) => {
+    const str = asStr(s, 'json_parse');
+    try {
+      return mkOk(jsToAxon(JSON.parse(str)));
+    } catch (e) {
+      return mkErr(mkString(String(e)));
+    }
+  },
+  json_stringify: (v) => {
+    try { return mkString(JSON.stringify(axonToJs(v))); }
+    catch (e) { throw new RuntimeError(`json_stringify: ${e}`); }
+  },
+  json_stringify_pretty: (v) => {
+    try { return mkString(JSON.stringify(axonToJs(v), null, 2)); }
+    catch (e) { throw new RuntimeError(`json_stringify_pretty: ${e}`); }
+  },
+  json_get: (obj, key) => {
+    const k = asStr(key, 'json_get');
+    if (obj.tag === ValueTag.Record) {
+      const val = obj.fields.get(k);
+      return val !== undefined ? mkSome(val) : mkNone();
+    }
+    return mkNone();
+  },
+};
+
+// ─── Environment / process ────────────────────────────────────
+
+const envFns: Record<string, NativeFn> = {
+  env_get: (name) => {
+    const val = process.env[asStr(name, 'env_get')];
+    return val !== undefined ? mkSome(mkString(val)) : mkNone();
+  },
+  env_set: (name, value) => {
+    process.env[asStr(name, 'env_set')] = asStr(value, 'env_set');
+    return UNIT;
+  },
+  env_all: () => {
+    const fields = new Map<string, AxonValue>();
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) fields.set(k, mkString(v));
+    }
+    return { tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue;
+  },
+  args: () => mkList(process.argv.slice(2).map(mkString)),
+};
+
 // ─── UUID / ID generation ─────────────────────────────────────
 
 const utilFns: Record<string, NativeFn> = {
@@ -406,7 +516,22 @@ const utilFns: Record<string, NativeFn> = {
   },
   assert: (cond, msg) => {
     if (cond.tag !== ValueTag.Bool || !cond.value) {
-      throw new RuntimeError(`Assertion failed: ${msg ? displayValue(msg) : 'assertion failed'}`);
+      const label = msg ? displayValue(msg) : 'assertion failed';
+      throw new RuntimeError(`Assertion failed: ${label}`);
+    }
+    return UNIT;
+  },
+  assert_eq: (a, b, msg) => {
+    if (!valuesEqual(a, b)) {
+      const label = msg ? ` (${displayValue(msg)})` : '';
+      throw new RuntimeError(`assert_eq failed${label}: expected ${displayValue(a)}, got ${displayValue(b)}`);
+    }
+    return UNIT;
+  },
+  assert_ne: (a, b, msg) => {
+    if (valuesEqual(a, b)) {
+      const label = msg ? ` (${displayValue(msg)})` : '';
+      throw new RuntimeError(`assert_ne failed${label}: both equal ${displayValue(a)}`);
     }
     return UNIT;
   },
@@ -415,16 +540,257 @@ const utilFns: Record<string, NativeFn> = {
   },
 };
 
+// ─── HTTP helper (Node.js built-in, no external deps) ─────────
+
+export function httpRequest(url: string, method: string, body?: string, contentType?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let urlObj: URL;
+    try { urlObj = new URL(url); } catch (e) { reject(new Error(`Invalid URL: ${url}`)); return; }
+
+    const isHttps = urlObj.protocol === 'https:';
+    const mod = isHttps ? require('https') : require('http');
+    const options: any = {
+      hostname: urlObj.hostname,
+      port: urlObj.port ? parseInt(urlObj.port) : (isHttps ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method,
+      headers: {} as Record<string, string>,
+    };
+    if (contentType) options.headers['Content-Type'] = contentType;
+    if (body) options.headers['Content-Length'] = Buffer.byteLength(body).toString();
+
+    const req = mod.request(options, (res: any) => {
+      let data = '';
+      res.on('data', (chunk: any) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+        }
+      });
+    });
+    req.on('error', (e: Error) => reject(e));
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+// ─── Tool Registry access (populated by interpreter for #[tool] fns) ────
+
+// Shared tool registry — interpreter writes to this Map, stdlib reads from it
+export const toolRegistry = new Map<string, {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+  fn?: AxonValue;   // set by interpreter when #[tool] fn is registered
+}>();
+
 // ─── Register all stdlib functions ───────────────────────────
 
 export function registerStdlib(env: Environment, define: (name: string, val: AxonValue) => void): void {
   const all = { ...ioFns, ...convFns, ...mathFns, ...stringFns, ...listFns,
                 ...mapFns, ...optionFns, ...resultFns, ...cmpFns, ...randomFns,
-                ...timeFns, ...ioFileFns, ...utilFns };
+                ...timeFns, ...ioFileFns, ...utilFns, ...jsonFns, ...envFns };
 
   for (const [name, fn] of Object.entries(all)) {
     define(name, native(name, fn));
   }
+
+  // ── Async HTTP functions ───────────────────────────────────
+  define('http_get', mkNativeAsync('http_get', async (urlVal) => {
+    const url = asStr(urlVal, 'http_get');
+    try {
+      const body = await httpRequest(url, 'GET');
+      return mkOk(mkString(body));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  }));
+
+  define('http_post', mkNativeAsync('http_post', async (urlVal, bodyVal, ctVal) => {
+    const url  = asStr(urlVal, 'http_post');
+    const body = asStr(bodyVal, 'http_post');
+    const ct   = ctVal && ctVal.tag === ValueTag.String ? ctVal.value : 'application/json';
+    try {
+      const resp = await httpRequest(url, 'POST', body, ct);
+      return mkOk(mkString(resp));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  }));
+
+  define('http_get_json', mkNativeAsync('http_get_json', async (urlVal) => {
+    const url = asStr(urlVal, 'http_get_json');
+    try {
+      const body = await httpRequest(url, 'GET');
+      return mkOk(jsToAxon(JSON.parse(body)));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  }));
+
+  // ── Tool registry functions ────────────────────────────────
+  define('tool_list', mkNative('tool_list', () => {
+    return mkList([...toolRegistry.keys()].map(mkString));
+  }));
+
+  define('tool_schema', mkNative('tool_schema', (nameVal) => {
+    const name = asStr(nameVal, 'tool_schema');
+    const tool = toolRegistry.get(name);
+    if (!tool) return mkNone();
+    // Convert schema to Axon Map
+    const fields = new Map<string, AxonValue>();
+    fields.set('name',        mkString(tool.name));
+    fields.set('description', mkString(tool.description));
+    fields.set('parameters',  jsToAxon(tool.parameters));
+    return mkSome({ tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue);
+  }));
+
+  // ── LLM with tools ─────────────────────────────────────────
+  define('llm_call_with_tools', mkNativeAsync('llm_call_with_tools', async (promptVal, toolNamesVal, modelVal) => {
+    const prompt    = asStr(promptVal, 'llm_call_with_tools');
+    const model     = modelVal && modelVal.tag === ValueTag.String ? modelVal.value : 'claude-haiku-4-5-20251001';
+    const apiKey    = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return mkErr(mkString('llm_call_with_tools: ANTHROPIC_API_KEY not set'));
+
+    // Collect tool names
+    const toolNames: string[] = [];
+    if (toolNamesVal && toolNamesVal.tag === ValueTag.List) {
+      for (const t of toolNamesVal.items) {
+        if (t.tag === ValueTag.String) toolNames.push(t.value);
+      }
+    }
+
+    // Build tool definitions for Anthropic API
+    const tools = toolNames
+      .map(n => toolRegistry.get(n))
+      .filter(Boolean)
+      .map(t => ({
+        name:         t!.name,
+        description:  t!.description,
+        input_schema: t!.parameters,
+      }));
+
+    try {
+      const reqBody = JSON.stringify({ model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }], tools });
+      const result = await new Promise<string>((resolve, reject) => {
+        const https = require('https');
+        const options = {
+          hostname: 'api.anthropic.com', port: 443, path: '/v1/messages', method: 'POST',
+          headers: {
+            'Content-Type': 'application/json', 'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(reqBody),
+          },
+        };
+        const req = https.request(options, (res: any) => {
+          let data = ''; res.on('data', (c: any) => { data += c; }); res.on('end', () => resolve(data));
+        });
+        req.on('error', (e: Error) => reject(e));
+        req.write(reqBody); req.end();
+      });
+      const resp: any = JSON.parse(result);
+      if (resp.error) return mkErr(mkString(resp.error.message ?? String(resp.error)));
+
+      // Return structured response: text content + tool_use blocks
+      const blocks: AxonValue[] = [];
+      for (const block of (resp.content ?? [])) {
+        if (block.type === 'text') {
+          const f = new Map<string, AxonValue>();
+          f.set('type', mkString('text')); f.set('text', mkString(block.text));
+          blocks.push({ tag: ValueTag.Record, typeName: 'Map', fields: f } as AxonValue);
+        } else if (block.type === 'tool_use') {
+          const f = new Map<string, AxonValue>();
+          f.set('type', mkString('tool_use')); f.set('name', mkString(block.name));
+          f.set('input', jsToAxon(block.input)); f.set('id', mkString(block.id));
+          blocks.push({ tag: ValueTag.Record, typeName: 'Map', fields: f } as AxonValue);
+        }
+      }
+      return mkOk(mkList(blocks));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  }));
+
+  // ── LLM function (Anthropic API via ANTHROPIC_API_KEY) ─────
+  define('llm_call', mkNativeAsync('llm_call', async (promptVal, modelVal) => {
+    const prompt = asStr(promptVal, 'llm_call');
+    const model  = modelVal && modelVal.tag === ValueTag.String
+      ? modelVal.value
+      : 'claude-haiku-4-5-20251001';
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return mkErr(mkString('llm_call: ANTHROPIC_API_KEY not set'));
+
+    try {
+      const reqBody = JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const result = await new Promise<string>((resolve, reject) => {
+        const https = require('https');
+        const options = {
+          hostname: 'api.anthropic.com',
+          port: 443,
+          path: '/v1/messages',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Length': Buffer.byteLength(reqBody),
+          },
+        };
+        const req = https.request(options, (res: any) => {
+          let data = '';
+          res.on('data', (chunk: any) => { data += chunk; });
+          res.on('end', () => resolve(data));
+        });
+        req.on('error', (e: Error) => reject(e));
+        req.write(reqBody);
+        req.end();
+      });
+      const resp: any = JSON.parse(result);
+      if (resp.error) return mkErr(mkString(resp.error.message ?? String(resp.error)));
+      return mkOk(mkString(resp.content?.[0]?.text ?? ''));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  }));
+
+  // ── Structured LLM output ──────────────────────────────────
+  define('llm_structured', mkNativeAsync('llm_structured', async (promptVal, schemaVal, modelVal) => {
+    const prompt   = asStr(promptVal, 'llm_structured');
+    const model    = modelVal && modelVal.tag === ValueTag.String ? modelVal.value : 'claude-haiku-4-5-20251001';
+    const schemaJs = axonToJs(schemaVal);
+    const schemaStr = JSON.stringify(schemaJs, null, 2);
+    const apiKey   = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return mkErr(mkString('llm_structured: ANTHROPIC_API_KEY not set'));
+
+    const augmented = `${prompt}\n\nYou MUST respond with a JSON object matching this JSON Schema:\n\`\`\`json\n${schemaStr}\n\`\`\`\nReturn ONLY valid JSON — no prose, no code fences, just the raw JSON object.`;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const reqBody = JSON.stringify({ model, max_tokens: 2048, messages: [{ role: 'user', content: augmented }] });
+        const raw = await new Promise<string>((resolve, reject) => {
+          const https = require('https');
+          const opts2 = {
+            hostname: 'api.anthropic.com', port: 443, path: '/v1/messages', method: 'POST',
+            headers: {
+              'Content-Type': 'application/json', 'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(reqBody),
+            },
+          };
+          const req = https.request(opts2, (res: any) => {
+            let data = ''; res.on('data', (c: any) => { data += c; }); res.on('end', () => resolve(data));
+          });
+          req.on('error', (e: Error) => reject(e));
+          req.write(reqBody); req.end();
+        });
+        const resp: any = JSON.parse(raw);
+        if (resp.error) { if (attempt < 2) continue; return mkErr(mkString(resp.error.message)); }
+        let text = resp.content?.[0]?.text ?? '';
+        // Strip ```json ... ``` fences if present
+        const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (fenceMatch) text = fenceMatch[1].trim();
+        else text = text.trim();
+        return mkOk(jsToAxon(JSON.parse(text)));
+      } catch (e) {
+        if (attempt === 2) return mkErr(mkString(`llm_structured: ${e}`));
+      }
+    }
+    return mkErr(mkString('llm_structured: all retry attempts failed'));
+  }));
 
   // Constants
   define('PI',       mkFloat(Math.PI));

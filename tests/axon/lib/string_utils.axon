@@ -1,0 +1,34 @@
+// ============================================================
+// Library: String utilities
+// ============================================================
+module Lib.StringUtils
+
+pub fn capitalize(s: String) -> String {
+    if len(s) == 0 { s }
+    else {
+        upper(slice(s, 0, 1)) + lower(slice(s, 1, len(s)))
+    }
+}
+
+pub fn title_case(s: String) -> String {
+    let words = split(s, " ")
+    join(list_map(words, capitalize), " ")
+}
+
+pub fn count_words(s: String) -> Int {
+    let trimmed = trim(s)
+    if len(trimmed) == 0 { 0 }
+    else { list_len(split(trimmed, " ")) }
+}
+
+pub fn is_palindrome(s: String) -> Bool {
+    let normalized = lower(trim(s))
+    let chars      = chars(normalized)
+    let reversed   = list_reverse(chars)
+    let s2         = join(list_map(reversed, |c| str(c)), "")
+    normalized == s2
+}
+
+pub fn repeat_str(s: String, n: Int) -> String {
+    list_fold(list_range(0, n), "", |acc, _| acc + s)
+}

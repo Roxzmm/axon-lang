@@ -16,7 +16,7 @@ import {
   ReturnSignal, BreakSignal, ContinueSignal, TrySignal, RuntimeError,
   mkNativeAsync,
 } from './runtime/value';
-import { registerStdlib } from './runtime/stdlib';
+import { registerStdlib, toolRegistry as stdlibToolRegistry, httpRequest, jsToAxon, axonToJs } from './runtime/stdlib';
 import { spawnAgent, hotUpdateAgent, AgentSpawnConfig } from './runtime/agent';
 import { parse } from './parser';
 
@@ -38,11 +38,46 @@ interface TypeInfo {
   variants: Map<string, TypeVariant>;
 }
 
+// ─── REPL result type ────────────────────────────────────
+
+export type ReplResult =
+  | { kind: 'value';  value: AxonValue }
+  | { kind: 'let';    name: string; mutable: boolean; value: AxonValue }
+  | { kind: 'fn';     name: string }
+  | { kind: 'type';   name: string }
+  | { kind: 'agent';  name: string }
+  | { kind: 'const';  name: string; value: AxonValue }
+  | { kind: 'none' };
+
+// ─── Tool Registry helpers (for #[tool] annotated functions) ─
+
+function axonTypeToJsonSchema(ty: import('./ast').TypeExpr | null): any {
+  if (!ty) return {};
+  switch (ty.kind) {
+    case 'NameType':
+      switch (ty.name) {
+        case 'Int':    return { type: 'integer' };
+        case 'Float':  return { type: 'number' };
+        case 'String': return { type: 'string' };
+        case 'Bool':   return { type: 'boolean' };
+        case 'Unit':   return { type: 'null' };
+        case 'List':   return { type: 'array', items: axonTypeToJsonSchema(ty.params[0] ?? null) };
+        default:       return { type: 'object' };
+      }
+    case 'UnitType': return { type: 'null' };
+    default:         return {};
+  }
+}
+
 export class Interpreter {
   public  globalEnv: Environment;
   private typeRegistry = new Map<string, TypeInfo>();
   private agentDeclRegistry = new Map<string, AgentDecl>();
   private moduleRegistry = new ModuleRegistry();
+  private builtinNames = new Set<string>();
+  // Module system: maps resolved module path → exported env
+  private loadedModules = new Map<string, Environment>();
+  private currentFile: string | null = null;
 
   constructor() {
     this.globalEnv = new Environment();
@@ -110,25 +145,35 @@ export class Interpreter {
     }));
     this.globalEnv.define('list_sort', mkNativeAsync('list_sort', async (list, fn) => {
       if (list.tag !== ValueTag.List) throw new RuntimeError('list_sort: expected list');
-      const sorted = [...list.items];
-      if (fn && fn.tag !== ValueTag.Unit) {
-        // Pre-compute comparison results (can't async inside sort comparator)
-        const pairs: [AxonValue, AxonValue, number][] = [];
-        sorted.sort((a, b) => {
-          if (a.tag === ValueTag.Int    && b.tag === ValueTag.Int)    return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
-          if (a.tag === ValueTag.Float  && b.tag === ValueTag.Float)  return a.value - b.value;
-          if (a.tag === ValueTag.String && b.tag === ValueTag.String) return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
-          return 0;
-        });
-      } else {
-        sorted.sort((a, b) => {
-          if (a.tag === ValueTag.Int    && b.tag === ValueTag.Int)    return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
-          if (a.tag === ValueTag.Float  && b.tag === ValueTag.Float)  return a.value - b.value;
-          if (a.tag === ValueTag.String && b.tag === ValueTag.String) return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
-          return 0;
-        });
+      const items = [...list.items];
+
+      function defaultCmp(a: AxonValue, b: AxonValue): number {
+        if (a.tag === ValueTag.Int    && b.tag === ValueTag.Int)    return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
+        if (a.tag === ValueTag.Float  && b.tag === ValueTag.Float)  return a.value - b.value;
+        if (a.tag === ValueTag.String && b.tag === ValueTag.String) return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
+        return 0;
       }
-      return mkList(sorted);
+
+      if (fn && fn.tag !== ValueTag.Unit) {
+        // Async-safe insertion sort — calls user comparator via await
+        for (let i = 1; i < items.length; i++) {
+          const key = items[i];
+          let j = i - 1;
+          while (j >= 0) {
+            const cmpVal = await call(fn, [items[j], key]);
+            const cmp = cmpVal.tag === ValueTag.Int   ? Number(cmpVal.value)
+                      : cmpVal.tag === ValueTag.Float ? cmpVal.value
+                      : defaultCmp(items[j], key);
+            if (cmp <= 0) break;
+            items[j + 1] = items[j];
+            j--;
+          }
+          items[j + 1] = key;
+        }
+      } else {
+        items.sort(defaultCmp);
+      }
+      return mkList(items);
     }));
     this.globalEnv.define('list_flat_map', mkNativeAsync('list_flat_map', async (list, fn) => {
       if (list.tag !== ValueTag.List) throw new RuntimeError('list_flat_map: expected list');
@@ -173,14 +218,157 @@ export class Interpreter {
       await new Promise(resolve => setTimeout(resolve, millis));
       return UNIT;
     }));
+
+    // ── tool_call: dispatch a registered #[tool] function by name + args map ──
+    this.globalEnv.define('tool_call', mkNativeAsync('tool_call', async (nameVal, argsVal) => {
+      if (nameVal.tag !== ValueTag.String) throw new RuntimeError('tool_call: first arg must be String');
+      const name = nameVal.value;
+      const tool = stdlibToolRegistry.get(name);
+      if (!tool?.fn) return mkErr(mkString(`tool_call: unknown tool '${name}'`));
+
+      // Build positional arg list from the named-args map
+      const fnValue = tool.fn;
+      const callArgs: AxonValue[] = [];
+      if (fnValue.tag === ValueTag.Function && argsVal.tag === ValueTag.Record) {
+        for (const param of fnValue.params) {
+          const v = argsVal.fields.get(param.name);
+          callArgs.push(v ?? UNIT);
+        }
+      } else if (argsVal.tag === ValueTag.List) {
+        callArgs.push(...argsVal.items);
+      }
+
+      try {
+        const result = await call(tool.fn, callArgs);
+        return mkOk(result);
+      } catch (e) {
+        return mkErr(mkString(String(e)));
+      }
+    }));
+
+    // ── agent_tool_loop: standard ReAct agentic loop (LLM ↔ tools) ──────────
+    this.globalEnv.define('agent_tool_loop', mkNativeAsync('agent_tool_loop', async (promptVal, toolNamesVal, maxTurnsVal) => {
+      const prompt   = promptVal.tag === ValueTag.String ? promptVal.value : displayValue(promptVal);
+      const model    = 'claude-haiku-4-5-20251001';
+      const maxTurns = maxTurnsVal?.tag === ValueTag.Int ? Number(maxTurnsVal.value) : 10;
+      const apiKey   = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return mkErr(mkString('agent_tool_loop: ANTHROPIC_API_KEY not set'));
+
+      // Collect tool names and build Anthropic tool definitions
+      const toolNames: string[] = [];
+      if (toolNamesVal?.tag === ValueTag.List) {
+        for (const t of toolNamesVal.items) {
+          if (t.tag === ValueTag.String) toolNames.push(t.value);
+        }
+      }
+      const toolDefs = toolNames
+        .map(n => stdlibToolRegistry.get(n))
+        .filter(Boolean)
+        .map(t => ({ name: t!.name, description: t!.description, input_schema: t!.parameters }));
+
+      const messages: any[] = [{ role: 'user', content: prompt }];
+
+      for (let turn = 0; turn < maxTurns; turn++) {
+        try {
+          const reqBody = JSON.stringify({ model, max_tokens: 1024, tools: toolDefs, messages });
+          const raw = await httpRequest('https://api.anthropic.com/v1/messages', 'POST', reqBody, 'application/json');
+          const resp: any = JSON.parse(raw);
+          if (resp.error) return mkErr(mkString(resp.error.message ?? String(resp.error)));
+
+          // Append assistant turn
+          messages.push({ role: 'assistant', content: resp.content });
+
+          const toolUses = (resp.content ?? []).filter((b: any) => b.type === 'tool_use');
+          const textBlocks = (resp.content ?? []).filter((b: any) => b.type === 'text');
+
+          if (toolUses.length === 0 || resp.stop_reason === 'end_turn') {
+            return mkOk(mkString(textBlocks.map((b: any) => b.text).join('')));
+          }
+
+          // Execute each tool call and collect results
+          const toolResults: any[] = [];
+          for (const block of toolUses) {
+            let resultStr: string;
+            const tool = stdlibToolRegistry.get(block.name);
+            if (!tool?.fn) {
+              resultStr = `Error: unknown tool '${block.name}'`;
+            } else {
+              try {
+                const fnValue = tool.fn;
+                const callArgs: AxonValue[] = [];
+                if (fnValue.tag === ValueTag.Function) {
+                  for (const param of fnValue.params) {
+                    const v = block.input[param.name];
+                    callArgs.push(v !== undefined ? jsToAxon(v) : UNIT);
+                  }
+                }
+                const result = await call(fnValue, callArgs);
+                resultStr = displayValue(result);
+              } catch (e) {
+                resultStr = `Error: ${e}`;
+              }
+            }
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultStr });
+          }
+          messages.push({ role: 'user', content: toolResults });
+        } catch (e) {
+          return mkErr(mkString(String(e)));
+        }
+      }
+      return mkErr(mkString('agent_tool_loop: max turns exceeded'));
+    }));
+
+    // ── ask_all: send same message to all agents concurrently, return all results ──
+    this.globalEnv.define('ask_all', mkNativeAsync('ask_all', async (agentListVal, msgVal) => {
+      if (agentListVal.tag !== ValueTag.List) throw new RuntimeError('ask_all: first arg must be List<Agent>');
+      const [msgType, msgArgs] = extractMsg(msgVal);
+      const results = await Promise.all(
+        agentListVal.items.map(agentVal => {
+          if (agentVal.tag !== ValueTag.Agent) throw new RuntimeError('ask_all: expected Agent in list');
+          return agentVal.ref.ask(msgType, msgArgs);
+        })
+      );
+      return mkList(results);
+    }));
+
+    // ── ask_any: send to all agents, return first response ───────────────────
+    this.globalEnv.define('ask_any', mkNativeAsync('ask_any', async (agentListVal, msgVal) => {
+      if (agentListVal.tag !== ValueTag.List) throw new RuntimeError('ask_any: first arg must be List<Agent>');
+      const [msgType, msgArgs] = extractMsg(msgVal);
+      return await Promise.race(
+        agentListVal.items.map(agentVal => {
+          if (agentVal.tag !== ValueTag.Agent) throw new RuntimeError('ask_any: expected Agent in list');
+          return agentVal.ref.ask(msgType, msgArgs);
+        })
+      );
+    }));
+
+    // Snapshot builtin names so :env can filter them out
+    for (const { name } of this.globalEnv.entries()) {
+      this.builtinNames.add(name);
+    }
+  }
+
+  // Return user-defined bindings (excludes builtins and REPL internals)
+  getReplUserBindings(): Array<{ name: string; value: AxonValue; mutable: boolean }> {
+    return this.globalEnv.entries().filter(
+      e => !this.builtinNames.has(e.name) && e.name !== '__repl__',
+    );
   }
 
   // ── Execute Program ───────────────────────────────────────
 
-  async execute(program: Program): Promise<void> {
-    // First pass: register types and functions
+  async execute(program: Program, filePath?: string): Promise<void> {
+    const prevFile = this.currentFile;
+    if (filePath) this.currentFile = filePath;
+
+    // First pass: handle use declarations, register types and functions
     for (const item of program.items) {
-      this.registerTopLevel(item);
+      if (item.kind === 'UseDecl') {
+        await this.handleUseDecl(item);
+      } else {
+        this.registerTopLevel(item);
+      }
     }
 
     // Second pass: evaluate initializers and find main
@@ -195,9 +383,102 @@ export class Interpreter {
       }
     }
 
+    this.currentFile = prevFile;
+
     // Run main if present
     if (mainFn) {
       await this.callValueAsync(mainFn, []);
+    }
+  }
+
+  private async handleUseDecl(decl: import('./ast').UseDecl): Promise<void> {
+    // Convert PascalCase segments to snake_case for file resolution
+    // e.g. Lib.MathUtils → lib/math_utils.axon
+    const toSnake = (s: string) => s.replace(/([A-Z])/g, (m, g, i) => (i > 0 ? '_' : '') + g.toLowerCase());
+    const modPath = decl.path.map(toSnake).join('/') + '.axon';
+    let filePath: string | null = null;
+
+    if (this.currentFile) {
+      const dir = require('path').dirname(this.currentFile);
+      const candidate = require('path').join(dir, modPath);
+      if (require('fs').existsSync(candidate)) {
+        filePath = candidate;
+      }
+    }
+
+    // Also try relative to process.cwd()
+    if (!filePath) {
+      const candidate = require('path').resolve(modPath);
+      if (require('fs').existsSync(candidate)) {
+        filePath = candidate;
+      }
+    }
+
+    if (!filePath) {
+      // Module not found — try to find by module name in registry
+      // (silently skip if not found; module may be built-in or optional)
+      return;
+    }
+
+    const resolved = require('path').resolve(filePath);
+    const cacheKey = resolved;
+
+    // Load module if not cached
+    if (!this.loadedModules.has(cacheKey)) {
+      const source = require('fs').readFileSync(resolved, 'utf-8');
+      const modProgram = parse(source, resolved);
+
+      // Execute module in a separate env to capture its exports
+      const modEnv = new Environment(this.globalEnv);
+      const modInterpreter = new Interpreter();
+      // Share registries
+      modInterpreter.typeRegistry = this.typeRegistry;
+      modInterpreter.agentDeclRegistry = this.agentDeclRegistry;
+      await modInterpreter.execute(modProgram, resolved);
+
+      // Collect exported (pub) definitions
+      const exports = new Environment();
+      for (const item of modProgram.items) {
+        if (item.kind === 'FnDecl' && item.name !== 'main') {
+          const val = modInterpreter.globalEnv.tryGet(item.name);
+          if (val !== undefined) exports.define(item.name, val);
+        } else if (item.kind === 'TypeDecl') {
+          // Export type constructors
+          for (const { name } of modInterpreter.globalEnv.entries()) {
+            if (!modInterpreter['builtinNames'].has(name) && name !== 'main') {
+              const val = modInterpreter.globalEnv.tryGet(name);
+              if (val !== undefined) exports.define(name, val);
+            }
+          }
+        } else if (item.kind === 'ConstDecl') {
+          const val = modInterpreter.globalEnv.tryGet(item.name);
+          if (val !== undefined) exports.define(item.name, val);
+        }
+      }
+      this.loadedModules.set(cacheKey, exports);
+    }
+
+    const exports = this.loadedModules.get(cacheKey)!;
+
+    // Import names into current global env
+    if (decl.items) {
+      // Selective import: use Foo { a, b, c }
+      for (const name of decl.items) {
+        const val = exports.tryGet(name);
+        if (val !== undefined) {
+          this.globalEnv.define(name, val);
+        }
+      }
+    } else if (decl.alias) {
+      // Module alias: use Foo as F  — import all under the alias namespace (simplified: import all)
+      for (const { name, value } of exports.entries()) {
+        this.globalEnv.define(`${decl.alias}.${name}`, value);
+      }
+    } else {
+      // Wildcard: import all exports into current scope
+      for (const { name, value } of exports.entries()) {
+        this.globalEnv.define(name, value);
+      }
     }
   }
 
@@ -224,48 +505,55 @@ export class Interpreter {
   }
 
   // ── REPL evaluation ──────────────────────────────────────
-  // Returns the result value (Unit if nothing to show), or throws.
-  async replExec(input: string): Promise<AxonValue> {
+  // Returns a structured ReplResult describing what was evaluated.
+  async replExec(input: string): Promise<ReplResult> {
     const trimmed = input.trim();
-    if (!trimmed) return UNIT;
+    if (!trimmed) return { kind: 'none' };
 
     // ── Declaration: fn / type / agent / const ─────────────
     if (/^(fn|type|agent|const)\s/.test(trimmed)) {
       const program = parse(`module REPL\n${trimmed}`);
       for (const item of program.items) this.registerTopLevel(item);
-      // Evaluate const initializers
+
+      // Return info about the first declared item
       for (const item of program.items) {
         if (item.kind === 'ConstDecl') {
           const val = await this.evalExpr(item.value, this.globalEnv);
           this.globalEnv.define(item.name, val, true);
+          return { kind: 'const', name: item.name, value: val };
         }
+        if (item.kind === 'FnDecl')    return { kind: 'fn',    name: item.name };
+        if (item.kind === 'TypeDecl')  return { kind: 'type',  name: item.name };
+        if (item.kind === 'AgentDecl') return { kind: 'agent', name: item.name };
       }
-      return UNIT;
+      return { kind: 'none' };
     }
 
     // ── Let binding: persist to global env ─────────────────
-    const letMatch = trimmed.match(/^let\s+(?:mut\s+)?(\w+)(?:\s*:\s*[^\s=][^=]*)?\s*=\s*([\s\S]+)$/);
+    const letMatch = trimmed.match(/^let\s+(mut\s+)?(\w+)(?:\s*:\s*[^\s=][^=]*)?\s*=\s*([\s\S]+)$/);
     if (letMatch) {
-      const [, name, exprSrc] = letMatch;
-      // Wrap to evaluate the RHS expression
+      const [, mutKw, name] = letMatch;
+      const mutable = !!mutKw;
       const program = parse(`module REPL\nfn __repl__() {\n${trimmed}\n${name}\n}`);
       this.registerTopLevel(program.items[0]);
       const fn = this.globalEnv.tryGet('__repl__');
       if (fn) {
-        const result = await this.callValueAsync(fn, []);
-        this.globalEnv.define(name, result, true);
-        return result;
+        const value = await this.callValueAsync(fn, []);
+        this.globalEnv.define(name, value, mutable);
+        return { kind: 'let', name, mutable, value };
       }
-      return UNIT;
+      return { kind: 'none' };
     }
 
     // ── Bare expression or statement ───────────────────────
-    // Wrap in a function, call it, return the value
     const program = parse(`module REPL\nfn __repl__() {\n${trimmed}\n}`);
     this.registerTopLevel(program.items[0]);
     const fn = this.globalEnv.tryGet('__repl__');
-    if (fn) return this.callValueAsync(fn, []);
-    return UNIT;
+    if (fn) {
+      const value = await this.callValueAsync(fn, []);
+      return { kind: 'value', value };
+    }
+    return { kind: 'none' };
   }
 
   private registerTopLevel(item: TopLevel): void {
@@ -285,6 +573,34 @@ export class Interpreter {
       isRecursive: true,
     };
     this.globalEnv.define(decl.name, fnVal, true);
+
+    // Handle #[tool] annotation — register in global tool registry
+    if (decl.annots.some(a => a === 'tool' || a.startsWith('tool('))) {
+      // Extract description from #[tool("description")] or use fn name
+      const toolAnnot = decl.annots.find(a => a === 'tool' || a.startsWith('tool('));
+      let description = decl.name.replace(/_/g, ' ');
+      if (toolAnnot && toolAnnot.startsWith('tool(')) {
+        const m = toolAnnot.match(/^tool\("(.*)"\)$/);
+        if (m) description = m[1];
+      }
+
+      // Build JSON Schema from param types
+      const properties: Record<string, any> = {};
+      const required: string[] = [];
+      for (const param of decl.params) {
+        properties[param.name] = axonTypeToJsonSchema(param.ty);
+        if (!param.default_) required.push(param.name);
+      }
+      const schema: Record<string, any> = { type: 'object', properties };
+      if (required.length > 0) schema.required = required;
+
+      stdlibToolRegistry.set(decl.name, {
+        name:        decl.name,
+        description,
+        parameters:  schema,
+        fn:          fnVal,
+      });
+    }
   }
 
   private registerType(decl: TypeDecl): void {
@@ -354,6 +670,18 @@ export class Interpreter {
   // ── Expression Evaluation ────────────────────────────────
 
   async evalExpr(expr: Expr, env: Environment): Promise<AxonValue> {
+    try {
+      return await this.evalExprInner(expr, env);
+    } catch (e) {
+      // Attach span to RuntimeErrors that don't already have one
+      if (e instanceof RuntimeError && !e.span && expr.span) {
+        e.span = expr.span;
+      }
+      throw e;
+    }
+  }
+
+  private async evalExprInner(expr: Expr, env: Environment): Promise<AxonValue> {
     switch (expr.kind) {
       case 'IntLit':    return mkInt(expr.value);
       case 'FloatLit':  return mkFloat(expr.value);
@@ -368,18 +696,33 @@ export class Interpreter {
       case 'If':        return this.evalIf(expr, env);
       case 'Match':     return this.evalMatch(expr, env);
 
-      case 'Binary':    return this.evalBinary(expr.op, await this.evalExpr(expr.left, env), await this.evalExpr(expr.right, env));
+      case 'Binary': {
+        // Short-circuit logical operators — do NOT evaluate right side eagerly
+        if (expr.op === '&&') {
+          const l = await this.evalExpr(expr.left, env);
+          if (l.tag === ValueTag.Bool && !l.value) return mkBool(false);
+          return await this.evalExpr(expr.right, env);
+        }
+        if (expr.op === '||') {
+          const l = await this.evalExpr(expr.left, env);
+          if (l.tag === ValueTag.Bool && l.value) return mkBool(true);
+          return await this.evalExpr(expr.right, env);
+        }
+        return this.evalBinary(expr.op, await this.evalExpr(expr.left, env), await this.evalExpr(expr.right, env));
+      }
       case 'Unary':     return this.evalUnary(expr.op, await this.evalExpr(expr.expr, env));
 
       case 'Call': {
-        const callee = await this.evalExpr(expr.callee, env);
-        const args   = await this.evalArgs(expr.args, env);
+        const callee    = await this.evalExpr(expr.callee, env);
+        const namedArgs = await this.evalArgs(expr.args, env);
+        const args      = this.resolveNamedArgs(callee, namedArgs);
         return this.callValueAsync(callee, args);
       }
 
       case 'MethodCall': {
-        const obj    = await this.evalExpr(expr.obj, env);
-        const args   = await this.evalArgs(expr.args, env);
+        const obj       = await this.evalExpr(expr.obj, env);
+        const namedArgs = await this.evalArgs(expr.args, env);
+        const args      = namedArgs.map(a => a.value);
         return this.evalMethodCall(obj, expr.method, args, env);
       }
 
@@ -395,20 +738,30 @@ export class Interpreter {
       }
 
       case 'Pipe': {
-        const left  = await this.evalExpr(expr.left, env);
+        const left = await this.evalExpr(expr.left, env);
+        // x |> f(args) → f(x, args)  (Elixir/F# style partial application)
+        if (expr.right.kind === 'Call') {
+          const callee    = await this.evalExpr(expr.right.callee, env);
+          const namedExtra = await this.evalArgs(expr.right.args, env);
+          const extraArgs  = namedExtra.map(a => a.value);
+          return this.callValueAsync(callee, [left, ...extraArgs]);
+        }
+        // x |> f  → f(x)
         const right = await this.evalExpr(expr.right, env);
-        // right should be a function — call it with left as first arg
         return this.callValueAsync(right, [left]);
       }
 
       case 'Lambda': {
-        return {
-          tag: ValueTag.Function,
+        // Capture env by reference so mutations in enclosing scope are visible
+        const lambdaFn = {
+          tag: ValueTag.Function as const,
           name: '<lambda>',
           params: expr.params,
           body: expr.body,
-          closure: env.snapshot(),
+          closure: env,
+          isRecursive: false,
         };
+        return lambdaFn;
       }
 
       case 'List': {
@@ -561,11 +914,7 @@ export class Interpreter {
         const fmtSpec   = fmtMatch ? fmtMatch[2] : '';
 
         try {
-          const { parse } = await import('./parser');
-          const ast    = parse(innerExpr);
-          const expr   = (ast.items[0] as any)?.expr ?? ast.items[0];
-          // Simple eval for interpolation
-          const val    = await this.evalExprFromSource(innerExpr, env);
+          const val = await this.evalExprFromSource(innerExpr, env);
           result += formatValue(val, fmtSpec?.slice(1) ?? '');
         } catch {
           result += `{${exprStr}}`;
@@ -581,21 +930,23 @@ export class Interpreter {
   }
 
   private async evalExprFromSource(src: string, env: Environment): Promise<AxonValue> {
-    // Parse a single expression from source string (for interpolation)
+    // Parse a bare expression by wrapping it in a synthetic function
     const { parse } = await import('./parser');
-    const prog = parse(src);
-    if (prog.items.length === 0) return UNIT;
-    // Wrap in a block or try as expression statement
-    const item = prog.items[0];
-    if (item && 'expr' in item) return this.evalExpr((item as any).expr, env);
-    // Try to parse as pure expression
-    const { Parser } = await import('./parser');
-    const p = new Parser(src);
-    const ast = p.parse();
-    if (ast.items.length > 0 && ast.items[0].kind === 'FnDecl') {
-      // It's actually an expression at top level — evaluate directly
-    }
-    return mkString(src);
+    const wrapper = `module __Interp__\nfn __interp__() {\n${src}\n}`;
+    const prog = parse(wrapper);
+    if (prog.items.length === 0) throw new RuntimeError(`interpolation: cannot parse: ${src}`);
+    const fn = prog.items[0];
+    if (fn.kind !== 'FnDecl') throw new RuntimeError(`interpolation: expected fn`);
+    // Register and call in current env
+    const fnVal: AxonValue = {
+      tag: ValueTag.Function,
+      name: '__interp__',
+      params: fn.params,
+      body: fn.body!,
+      closure: env,
+      isRecursive: false,
+    };
+    return this.callValueAsync(fnVal, []);
   }
 
   private async evalBlock(expr: { stmts: (import('./ast').Stmt)[]; tail: Expr | null }, env: Environment): Promise<AxonValue> {
@@ -854,13 +1205,8 @@ export class Interpreter {
         newVal = this.evalBinary(op.slice(0, -1), cur, val); // += → +
       }
 
-      // Try to assign in enclosing scope first
-      try {
-        env.assign(name, newVal);
-      } catch {
-        // If not found locally, define as mutable in agent context
-        env.define(name, newVal, true);
-      }
+      // Assign to the nearest enclosing mutable binding
+      env.assign(name, newVal);
     } else if (target.kind === 'FieldAccess') {
       const obj = await this.evalExpr(target.obj, env);
       if (obj.tag === ValueTag.Record) {
@@ -1023,8 +1369,33 @@ export class Interpreter {
     throw new RuntimeError(`Not callable: ${displayValue(fn)}`);
   }
 
-  private async evalArgs(callArgs: CallArg[], env: Environment): Promise<AxonValue[]> {
-    return Promise.all(callArgs.map(a => this.evalExpr(a.value, env)));
+  private async evalArgs(callArgs: CallArg[], env: Environment): Promise<{name?: string, value: AxonValue}[]> {
+    return Promise.all(callArgs.map(async a => ({ name: a.name, value: await this.evalExpr(a.value, env) })));
+  }
+
+  private resolveNamedArgs(fn: AxonValue, namedArgs: {name?: string, value: AxonValue}[]): AxonValue[] {
+    // Fast path: no named args
+    if (!namedArgs.some(a => a.name)) return namedArgs.map(a => a.value);
+
+    // User-defined function: match args by param name
+    if (fn.tag === ValueTag.Function) {
+      const result: (AxonValue | undefined)[] = new Array(fn.params.length).fill(undefined);
+      let posIdx = 0;
+      for (const arg of namedArgs) {
+        if (arg.name) {
+          const i = fn.params.findIndex(p => p.name === arg.name);
+          if (i >= 0) result[i] = arg.value;
+        } else {
+          // Advance past already-filled named slots
+          while (posIdx < result.length && result[posIdx] !== undefined) posIdx++;
+          if (posIdx < result.length) result[posIdx++] = arg.value;
+        }
+      }
+      return result as AxonValue[];
+    }
+
+    // Fallback for native fns: positional only
+    return namedArgs.map(a => a.value);
   }
 
   // ── Method Calls ─────────────────────────────────────────
@@ -1115,6 +1486,10 @@ export class Interpreter {
       const i = Number((index as any).value ?? 0);
       return obj.items[i] ?? mkNone();
     }
+    if (obj.tag === ValueTag.Tuple) {
+      const i = Number((index as any).value ?? 0);
+      return obj.items[i] ?? mkNone();
+    }
     if (obj.tag === ValueTag.Record) {
       const key = displayValue(index);
       return obj.fields.get(key) ?? mkNone();
@@ -1173,18 +1548,102 @@ export class Interpreter {
 }
 
 // ── Format helper ─────────────────────────────────────────────
-
+// Supports Python-style format spec: [[fill]align][sign][0][width][,][.prec][type]
+// align: < > ^ =   type: b x X o e E f F % s
 function formatValue(v: AxonValue, fmt: string): string {
   if (!fmt) return displayValue(v);
 
-  // Numeric formatting
-  if (v.tag === ValueTag.Float || v.tag === ValueTag.Int) {
-    const n = v.tag === ValueTag.Float ? v.value : Number(v.value);
-    const m = fmt.match(/^\.(\d+)f?$/);
-    if (m) return n.toFixed(parseInt(m[1]));
-    const pct = fmt.match(/^\.(\d*)%$/);
-    if (pct) return (n * 100).toFixed(parseInt(pct[1] || '0')) + '%';
+  // Parse: optional (fill + align), sign, zero-pad, width, comma, .prec, type
+  const re = /^(?:([^<>^=]?)([<>^=]))?([+\- ]?)(0?)([\d]*)(,?)(?:\.([\d]+))?([bcdeEfFgGnoxXs%]?)$/;
+  const m = re.exec(fmt);
+  if (!m) return displayValue(v);
+
+  const [, fillChar, align, sign, zeroPad, widthStr, comma, precStr, typeCh] = m;
+  const width  = widthStr ? parseInt(widthStr) : 0;
+  const prec   = precStr !== undefined && precStr !== '' ? parseInt(precStr) : -1;
+  // fill: explicit fill char > zero-pad default > space
+  const fill   = (fillChar !== undefined && fillChar !== '') ? fillChar : (zeroPad ? '0' : ' ');
+
+  const isNumeric = v.tag === ValueTag.Int || v.tag === ValueTag.Float;
+  const n = isNumeric ? (v.tag === ValueTag.Float ? v.value : Number((v as any).value)) : 0;
+
+  let result: string;
+
+  switch (typeCh) {
+    case 'b':
+      result = isNumeric ? Math.trunc(n).toString(2) : displayValue(v);
+      break;
+    case 'x':
+      result = isNumeric ? Math.trunc(n).toString(16) : displayValue(v);
+      break;
+    case 'X':
+      result = isNumeric ? Math.trunc(n).toString(16).toUpperCase() : displayValue(v);
+      break;
+    case 'o':
+      result = isNumeric ? Math.trunc(n).toString(8) : displayValue(v);
+      break;
+    case 'e':
+      result = isNumeric ? (prec >= 0 ? n.toExponential(prec) : n.toExponential()) : displayValue(v);
+      break;
+    case 'E':
+      result = isNumeric ? (prec >= 0 ? n.toExponential(prec) : n.toExponential()).toUpperCase() : displayValue(v);
+      break;
+    case 'f': case 'F':
+      if (isNumeric) {
+        result = prec >= 0 ? n.toFixed(prec) : n.toFixed(6);
+        if (typeCh === 'F') result = result.toUpperCase();
+      } else result = displayValue(v);
+      break;
+    case '%':
+      result = isNumeric
+        ? (prec >= 0 ? (n * 100).toFixed(prec) : (n * 100).toFixed(0)) + '%'
+        : displayValue(v);
+      break;
+    default: // 's', 'g', 'n', ''
+      result = (isNumeric && prec >= 0) ? n.toFixed(prec) : displayValue(v);
+      break;
   }
 
-  return displayValue(v);
+  // Sign prefix for positive numbers
+  if (isNumeric && sign === '+' && n >= 0 && !result.startsWith('+')) {
+    result = '+' + result;
+  } else if (isNumeric && sign === ' ' && n >= 0) {
+    result = ' ' + result;
+  }
+
+  // Thousand comma grouping (applied to integer part)
+  if (comma && isNumeric) {
+    const dotIdx = result.indexOf('.');
+    const intPart  = dotIdx >= 0 ? result.slice(0, dotIdx) : result;
+    const fracPart = dotIdx >= 0 ? result.slice(dotIdx) : '';
+    const hasSign2 = intPart.startsWith('+') || intPart.startsWith('-') || intPart.startsWith(' ');
+    const prefix  = hasSign2 ? intPart[0] : '';
+    const digits  = hasSign2 ? intPart.slice(1) : intPart;
+    result = prefix + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fracPart;
+  }
+
+  // Width padding
+  if (width > 0 && result.length < width) {
+    const padLen = width - result.length;
+    const effectiveFill  = fill;
+    const effectiveAlign = align || (isNumeric ? '>' : '<');
+    if (effectiveAlign === '>') {
+      result = effectiveFill.repeat(padLen) + result;
+    } else if (effectiveAlign === '<') {
+      result = result + effectiveFill.repeat(padLen);
+    } else if (effectiveAlign === '^') {
+      const lpad = Math.floor(padLen / 2);
+      result = effectiveFill.repeat(lpad) + result + effectiveFill.repeat(padLen - lpad);
+    } else if (effectiveAlign === '=') {
+      // Sign-aware: sign first, then fill, then digits
+      const hasSign3 = result.startsWith('+') || result.startsWith('-') || result.startsWith(' ');
+      if (hasSign3) {
+        result = result[0] + effectiveFill.repeat(padLen) + result.slice(1);
+      } else {
+        result = effectiveFill.repeat(padLen) + result;
+      }
+    }
+  }
+
+  return result;
 }

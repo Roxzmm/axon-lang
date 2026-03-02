@@ -1,0 +1,106 @@
+// ============================================================
+// Test: Recursion — factorial, fibonacci, mutual, tree
+// ============================================================
+module Tests.Recursion
+
+fn factorial(n: Int) -> Int {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+fn fib(n: Int) -> Int {
+    if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
+}
+
+// Mutual recursion
+fn is_even(n: Int) -> Bool {
+    if n == 0 { true } else { is_odd(n - 1) }
+}
+
+fn is_odd(n: Int) -> Bool {
+    if n == 0 { false } else { is_even(n - 1) }
+}
+
+// Recursive list operations
+fn my_len(lst: List<Int>) -> Int {
+    match lst {
+        []       => 0
+        [_, ..rest] => 1 + my_len(rest)
+    }
+}
+
+fn my_sum(lst: List<Int>) -> Int {
+    match lst {
+        []       => 0
+        [x, ..rest] => x + my_sum(rest)
+    }
+}
+
+fn my_reverse(lst: List<Int>) -> List<Int> {
+    match lst {
+        []       => []
+        [x, ..rest] => list_append(my_reverse(rest), x)
+    }
+}
+
+// Tree type
+type Tree {
+    Leaf(Int)
+    Node(Tree, Tree)
+}
+
+fn tree_sum(t: Tree) -> Int {
+    match t {
+        Leaf(n)    => n
+        Node(l, r) => tree_sum(l) + tree_sum(r)
+    }
+}
+
+fn tree_depth(t: Tree) -> Int {
+    match t {
+        Leaf(_)    => 0
+        Node(l, r) => 1 + max(tree_depth(l), tree_depth(r))
+    }
+}
+
+fn main() -> Unit {
+    // ── Factorial ───────────────────────────────────────────
+    assert(factorial(0) == 1,   "0! = 1")
+    assert(factorial(1) == 1,   "1! = 1")
+    assert(factorial(5) == 120, "5! = 120")
+    assert(factorial(10) == 3628800, "10! = 3628800")
+
+    // ── Fibonacci ───────────────────────────────────────────
+    assert(fib(0) == 0,  "fib(0)")
+    assert(fib(1) == 1,  "fib(1)")
+    assert(fib(7) == 13, "fib(7)")
+    assert(fib(10) == 55,"fib(10)")
+
+    // ── Mutual recursion ────────────────────────────────────
+    assert(is_even(0),   "0 is even")
+    assert(!is_even(1),  "1 is not even")
+    assert(is_even(4),   "4 is even")
+    assert(is_odd(3),    "3 is odd")
+    assert(!is_odd(6),   "6 is not odd")
+
+    // ── Recursive list ops ──────────────────────────────────
+    let lst = [1, 2, 3, 4, 5]
+    assert(my_len([]) == 0,     "my_len empty")
+    assert(my_len(lst) == 5,    "my_len 5")
+    assert(my_sum(lst) == 15,   "my_sum 15")
+
+    let rev = my_reverse(lst)
+    assert(option_unwrap(list_get(rev, 0)) == 5, "reverse head")
+    assert(option_unwrap(list_get(rev, 4)) == 1, "reverse tail")
+
+    // ── Tree recursion ──────────────────────────────────────
+    let t1 = Node(Node(Leaf(1), Leaf(2)), Leaf(3))
+    let t2 = Node(Leaf(10), Node(Leaf(20), Leaf(30)))
+
+    assert(tree_sum(Leaf(42)) == 42, "single leaf sum")
+    assert(tree_sum(t1) == 6,        "tree sum 1+2+3")
+    assert(tree_sum(t2) == 60,       "tree sum 10+20+30")
+    assert(tree_depth(Leaf(1)) == 0, "leaf depth 0")
+    assert(tree_depth(t1) == 2,      "tree depth 2")
+
+    print("PASS: recursion")
+}

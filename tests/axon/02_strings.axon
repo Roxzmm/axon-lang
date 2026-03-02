@@ -1,0 +1,78 @@
+// ============================================================
+// Test: Strings — operations, interpolation, concat
+// ============================================================
+module Tests.Strings
+
+fn main() -> Unit {
+    // ── Basic properties ────────────────────────────────────
+    assert(len("") == 0,             "empty string len")
+    assert(len("hello") == 5,        "len of hello")
+    assert(len("axon lang") == 9,    "len with space")
+
+    // ── Case conversion ─────────────────────────────────────
+    assert(upper("hello") == "HELLO",   "upper")
+    assert(lower("WORLD") == "world",   "lower")
+    assert(upper("") == "",             "upper empty")
+    assert(lower("MiXeD") == "mixed",   "lower mixed")
+
+    // ── Trim ─────────────────────────────────────────────────
+    assert(trim("  hi  ") == "hi",      "trim both ends")
+    assert(trim("") == "",              "trim empty")
+    assert(trim("ok") == "ok",          "trim nothing")
+    assert(trim_start("  x") == "x",    "trim_start")
+    assert(trim_end("x  ") == "x",      "trim_end")
+
+    // ── Predicates ──────────────────────────────────────────
+    assert(contains("hello world", "world"),  "contains true")
+    assert(!contains("hello world", "xyz"),   "contains false")
+    assert(starts_with("hello", "hel"),       "starts_with true")
+    assert(!starts_with("hello", "ello"),     "starts_with false")
+    assert(ends_with("hello", "llo"),         "ends_with true")
+    assert(!ends_with("hello", "hel"),        "ends_with false")
+
+    // ── Concatenation ───────────────────────────────────────
+    assert("foo" + "bar" == "foobar",   "concat strings")
+    assert("" + "x" == "x",            "concat empty left")
+    assert("x" + "" == "x",            "concat empty right")
+    assert("a" + "b" + "c" == "abc",   "concat chain")
+
+    // ── Replace ─────────────────────────────────────────────
+    assert(replace("hello world", "world", "axon") == "hello axon", "replace word")
+    assert(replace("aaa", "a", "b") == "bbb",                        "replace all")
+    assert(replace("hello", "xyz", "abc") == "hello",                "replace miss")
+
+    // ── Split and join ──────────────────────────────────────
+    let parts = split("a,b,c", ",")
+    assert(list_len(parts) == 3,          "split count")
+    assert(join(parts, "-") == "a-b-c",   "join with delimiter")
+    assert(join(split("one two", " "), "_") == "one_two", "split+join roundtrip")
+
+    // ── Slice ───────────────────────────────────────────────
+    assert(slice("hello", 1, 3) == "el",    "slice middle")
+    assert(slice("hello", 0, 5) == "hello", "slice all")
+    assert(slice("hello", 3, 5) == "lo",    "slice end")
+
+    // ── Repeat ──────────────────────────────────────────────
+    assert(repeat("ab", 3) == "ababab", "repeat 3x")
+    assert(repeat("x", 0) == "",        "repeat 0x")
+    assert(repeat("hi", 1) == "hi",     "repeat 1x")
+
+    // ── Interpolation ───────────────────────────────────────
+    let name = "Axon"
+    let n    = 42
+    assert("Hello, {name}!" == "Hello, Axon!",  "string interpolation")
+    assert("n = {n}" == "n = 42",               "number interpolation")
+    assert("{1 + 1}" == "2",                    "expression interpolation")
+
+    // ── Parse ───────────────────────────────────────────────
+    let pi_r = parse_float("3.14")
+    assert(result_is_ok(pi_r),                    "parse_float ok")
+
+    let bad_r = parse_int("not_a_number")
+    assert(result_is_err(bad_r),                  "parse_int err on non-number")
+
+    let forty_two = parse_int("42")
+    assert(result_unwrap(forty_two) == 42,        "parse_int value")
+
+    print("PASS: strings")
+}

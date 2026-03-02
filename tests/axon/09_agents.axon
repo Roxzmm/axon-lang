@@ -1,0 +1,118 @@
+// ============================================================
+// Test: Agents — spawn, ask, send, state management
+// ============================================================
+module Tests.Agents
+
+agent Counter {
+    state {
+        count: Int = 0
+    }
+
+    on Increment -> Int {
+        count = count + 1
+        count
+    }
+
+    on Decrement -> Int {
+        count = count - 1
+        count
+    }
+
+    on Add(n: Int) -> Int {
+        count = count + n
+        count
+    }
+
+    on Reset -> Unit {
+        count = 0
+    }
+
+    on Get -> Int = count
+}
+
+agent Stack {
+    state {
+        items: List<Int> = []
+    }
+
+    on Push(n: Int) -> Unit {
+        items = list_prepend(n, items)
+    }
+
+    on Pop -> Option<Int> {
+        match items {
+            []          => None
+            [h, ..rest] => {
+                items = rest
+                Some(h)
+            }
+        }
+    }
+
+    on Peek -> Option<Int> {
+        list_head(items)
+    }
+
+    on Size -> Int {
+        list_len(items)
+    }
+}
+
+fn main() -> Unit {
+    // ── Basic counter agent ─────────────────────────────────
+    let c = spawn Counter
+
+    let v1 = c.ask(Increment)
+    assert(v1 == 1, "increment to 1")
+
+    let v2 = c.ask(Increment)
+    assert(v2 == 2, "increment to 2")
+
+    let v3 = c.ask(Decrement)
+    assert(v3 == 1, "decrement to 1")
+
+    let v4 = c.ask(Add(10))
+    assert(v4 == 11, "add 10")
+
+    let v5 = c.ask(Get)
+    assert(v5 == 11, "get current state")
+
+    c.send(Reset)
+    sleep(10)   // small delay for fire-and-forget
+    let v6 = c.ask(Get)
+    assert(v6 == 0, "reset to 0")
+
+    // ── Independent agents have independent state ───────────
+    let c2 = spawn Counter
+    c2.ask(Increment)
+    c2.ask(Increment)
+    c2.ask(Increment)
+
+    assert(c.ask(Get) == 0,  "c still at 0")
+    assert(c2.ask(Get) == 3, "c2 at 3")
+
+    // ── Stack agent ─────────────────────────────────────────
+    let s = spawn Stack
+
+    assert(s.ask(Size) == 0, "empty stack size 0")
+    assert(option_is_none(s.ask(Pop)), "pop empty is None")
+
+    s.ask(Push(10))
+    s.ask(Push(20))
+    s.ask(Push(30))
+
+    assert(s.ask(Size) == 3, "stack size 3")
+
+    let top = s.ask(Peek)
+    assert(option_is_some(top),          "peek is Some")
+    assert(option_unwrap(top) == 30,     "peek value is 30 (LIFO)")
+
+    let popped = s.ask(Pop)
+    assert(option_unwrap(popped) == 30,  "pop returns 30")
+    assert(s.ask(Size) == 2,             "size after pop")
+
+    let popped2 = s.ask(Pop)
+    assert(option_unwrap(popped2) == 20, "pop returns 20")
+
+    print("PASS: agents")
+}

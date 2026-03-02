@@ -1,0 +1,51 @@
+// ============================================================
+// Test: File IO + Environment variables
+// ============================================================
+module Tests.IO
+
+fn main() -> Unit {
+    // ── Environment variables ─────────────────────────────────
+    env_set("AXON_TEST_VAR", "hello_axon")
+    let got = env_get("AXON_TEST_VAR")
+    assert(option_is_some(got), "env var set")
+    assert_eq(option_unwrap(got), "hello_axon", "env var value")
+
+    // Non-existent var
+    let missing = env_get("AXON_DEFINITELY_NOT_SET_XYZ_12345")
+    assert(option_is_none(missing), "missing env var -> None")
+
+    // env_all returns a map
+    let all_env = env_all()
+    let found = map_get(all_env, "AXON_TEST_VAR")
+    assert(option_is_some(found), "env_all contains set var")
+
+    // ── args() returns a list ─────────────────────────────────
+    let process_args = args()
+    assert(true, "args() returns list without error")
+
+    // ── File write / read round-trip ──────────────────────────
+    // Use a relative path that works cross-platform
+    let tmp_path = "axon_test_19_tmp.txt"
+    let content  = "Hello from Axon!\nLine 2\n"
+
+    let w = write_file(tmp_path, content)
+    assert(result_is_ok(w), "write_file ok")
+
+    let r = read_file(tmp_path)
+    assert(result_is_ok(r), "read_file ok")
+    assert_eq(result_unwrap(r), content, "file content round-trips")
+
+    // ── file_exists ───────────────────────────────────────────
+    assert(file_exists(tmp_path), "file exists after write")
+    assert(!file_exists("axon_definitely_missing_file_xyz_99999.txt"), "nonexistent file")
+
+    // ── Read error case ───────────────────────────────────────
+    let bad_read = read_file("axon_definitely_missing_file_xyz_99999.txt")
+    assert(result_is_err(bad_read), "missing file read -> Err")
+
+    // ── Write error case ──────────────────────────────────────
+    let bad_write = write_file("Z:/no_such_drive/no_such_dir/file.txt", "x")
+    assert(result_is_err(bad_write), "bad path -> Err")
+
+    print("PASS: io")
+}

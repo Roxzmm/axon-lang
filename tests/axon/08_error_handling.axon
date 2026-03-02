@@ -1,0 +1,102 @@
+// ============================================================
+// Test: Error handling — Result, Option, ? operator
+// ============================================================
+module Tests.ErrorHandling
+
+fn safe_div(a: Int, b: Int) -> Result<Int, String> {
+    if b == 0 {
+        Err("division by zero")
+    } else {
+        Ok(a / b)
+    }
+}
+
+fn safe_head(lst: List<Int>) -> Option<Int> {
+    if list_is_empty(lst) {
+        None
+    } else {
+        Some(option_unwrap(list_head(lst)))
+    }
+}
+
+fn main() -> Unit {
+    // ── Result basics ───────────────────────────────────────
+    let ok_r = safe_div(10, 2)
+    let err_r = safe_div(10, 0)
+
+    assert(result_is_ok(ok_r),   "div ok is Ok")
+    assert(result_is_err(err_r), "div 0 is Err")
+    assert(result_unwrap(ok_r) == 5, "div result value")
+
+    // ── unwrap_or ───────────────────────────────────────────
+    assert(result_unwrap_or(ok_r, -1) == 5,  "unwrap_or ok")
+    assert(result_unwrap_or(err_r, -1) == -1, "unwrap_or err")
+
+    // ── unwrap_err ──────────────────────────────────────────
+    let err_msg = result_unwrap_err(err_r)
+    assert(err_msg == "division by zero", "err message")
+
+    // ── Option basics ───────────────────────────────────────
+    let some = Some(42)
+    let none = None
+
+    assert(option_is_some(some), "Some is_some")
+    assert(option_is_none(none), "None is_none")
+    assert(!option_is_some(none),"None is not some")
+    assert(option_unwrap(some) == 42, "unwrap Some")
+
+    // ── unwrap_or ───────────────────────────────────────────
+    assert(option_unwrap_or(some, 0) == 42, "unwrap_or some")
+    assert(option_unwrap_or(none, 99) == 99, "unwrap_or none")
+
+    // ── safe_head ───────────────────────────────────────────
+    let h = safe_head([1, 2, 3])
+    assert(option_is_some(h),        "head some")
+    assert(option_unwrap(h) == 1,    "head value")
+    assert(option_is_none(safe_head([])), "head empty none")
+
+    // ── result_map ──────────────────────────────────────────
+    let doubled = result_map(ok_r, |n| n * 2)
+    assert(result_is_ok(doubled),           "map ok stays ok")
+    assert(result_unwrap(doubled) == 10,    "map value doubled")
+
+    let err_mapped = result_map(err_r, |n| n * 2)
+    assert(result_is_err(err_mapped), "map err stays err")
+
+    // ── option_map ──────────────────────────────────────────
+    let opt_doubled = option_map(some, |n| n * 2)
+    assert(option_is_some(opt_doubled),        "option_map some")
+    assert(option_unwrap(opt_doubled) == 84,   "option_map value")
+    assert(option_is_none(option_map(none, |n| n * 2)), "option_map none")
+
+    // ── result_and_then (flat_map) ──────────────────────────
+    let chained = result_and_then(ok_r, |n| safe_div(n, 1))
+    assert(result_is_ok(chained),       "and_then ok chain")
+    assert(result_unwrap(chained) == 5, "and_then value")
+
+    let chained_err = result_and_then(ok_r, |n| safe_div(n, 0))
+    assert(result_is_err(chained_err),  "and_then propagates err")
+
+    // ── Nested error handling ────────────────────────────────
+    fn compute(a: Int, b: Int, c: Int) -> Result<Int, String> {
+        let r1 = safe_div(a, b)
+        if result_is_err(r1) { return r1 }
+        let v1 = result_unwrap(r1)
+        safe_div(v1, c)
+    }
+
+    let r = compute(100, 5, 4)
+    assert(result_is_ok(r),           "nested compute ok")
+    assert(result_unwrap(r) == 5,     "nested compute value")
+
+    let r_err = compute(100, 0, 4)
+    assert(result_is_err(r_err),      "nested compute error propagates")
+
+    // ── Parse result usage ──────────────────────────────────
+    assert(result_is_ok(parse_int("123")),      "parse_int ok")
+    assert(result_is_err(parse_int("abc")),     "parse_int err")
+    assert(result_unwrap(parse_int("42")) == 42,"parse_int value")
+    assert(result_is_ok(parse_float("3.14")),   "parse_float ok")
+
+    print("PASS: error_handling")
+}

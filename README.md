@@ -1,158 +1,427 @@
-# Axon 语言
+# Axon
 
-> **专为 AI Agent 设计的系统级编程语言**
+> **A programming language designed for AI agents to write, and humans to read.**
+
+[中文文档](README_ZH.md)
+
+---
+
+## Two Axioms
 
 ```
-"编译通过即正确，热更新即上线。"
+Compile success  →  Safety guarantee
+Safety guarantee →  Immediate deployment
+```
+
+Axon is built on two non-negotiable principles:
+
+1. **If the compiler accepts it, it is safe to run.** Not "probably safe". Not "safe unless you do X". Safe. The type system, effect system, and exhaustive pattern matching together make this possible.
+
+2. **Safe means deployed — immediately.** A change that passes compilation can be hot-loaded into a running system without restart, without state loss, without ceremony.
+
+These two principles, combined, mean the edit→deploy loop for an AI agent writing Axon code is: **write → compile → running**.
+
+---
+
+## Why a New Language?
+
+Existing languages fail AI-agent workloads in specific ways:
+
+| Language | Strength | Failure mode for AI agents |
+|----------|----------|---------------------------|
+| TypeScript | Large ecosystem, decent types | `any` escape hatches; runtime surprises; no effect tracking |
+| Python | Fast to write, dynamic | Weak typing; GIL concurrency; errors only at runtime |
+| Rust | Maximal safety + performance | Ownership system is hard for LLMs to reason about correctly |
+| Go | Simple, concurrent | Weak type system; no algebraic types; runtime nil panics |
+
+Axon targets a different point in the trade-off space: **maximally checkable at compile time, minimally surprising at runtime, and syntactically regular enough that an LLM can reliably generate correct code.**
+
+Human readability is required. Human *writability* is optional — the primary author is an AI.
+
+---
+
+## Quick Start
+
+**Requirements:** Node.js 18+
+
+```bash
+git clone https://github.com/your-org/axon-lang
+cd axon-lang
+npm install
+npm run build
+npm link          # makes `axon` available globally
+```
+
+```bash
+axon run examples/01_hello_world.axon
+axon repl
+axon check myfile.axon
+axon run myfile.axon --watch      # hot reload on save
+axon run myfile.axon --strict-effects   # enforce effect declarations on all functions
 ```
 
 ---
 
-## 为什么需要 Axon？
+## Language Tour
 
-现有语言在 AI Agent 场景下各有致命缺陷：
+### Agents — Actors with State
 
-| 语言 | 优势 | AI Agent 场景的致命缺陷 |
-|------|------|------------------------|
-| **TypeScript** | 生态大、类型友好 | `any` 漏洞、运行时仍可崩溃、无内存安全 |
-| **Python** | 快速迭代、动态 | 类型检查弱、性能差、并发模型混乱 |
-| **Rust** | 极致安全、极致性能 | 所有权系统学习曲线陡峭、AI 难以快速生成正确代码 |
-| **C++** | 性能极佳 | 手工打磨成本高、不适合 AI 大量生成 |
-| **Lisp** | 同像性、宏系统强大 | 类型系统弱、现代工具链缺失 |
-
-**Axon 的答案**：取 Rust 的编译期安全保证 + Python/Lisp 的动态热更新 + Erlang 的 Actor 并发，专门针对 AI 大量生成代码的特性优化语法规整性。
-
----
-
-## 三大核心设计原则
-
-### 1. 编译即正确 (Correct by Construction)
-- **Hindley-Milner 类型推断**：写更少类型注解，编译器自动推断
-- **代数数据类型 + 穷举匹配**：消灭 null 指针、未处理的分支
-- **Effect 系统**：在类型签名中声明副作用（IO、Async、State），编译器追踪
-- **精化类型 (Refinement Types)**：`Int where n > 0`，运行时约束编译期验证
-- **线性类型 Lite**：资源（文件、连接）自动管理，无需手动释放
-
-### 2. AI 快速生成 + 热更新上线 (Hot-Reload Native)
-- **模块级热更新**：更改代码 → 编译增量 delta → 注入运行中的 agent，无需重启
-- **状态迁移声明**：热更新时声明新旧状态如何转换，agent 无缝继续运行
-- **增量编译**：只重新编译变更模块，毫秒级反馈
-- **REPL + 增量求值**：像 Lisp 一样，也可以逐行求值探索
-
-### 3. 语法规整，AI 可靠生成 (Regular Grammar)
-- **零歧义语法**：每个构造都有唯一的解析方式
-- **最少关键字**：核心关键字 < 40 个
-- **一致性优先**：同类事物总是用同种语法表达
-- **人类可读**：优先英语自然表达，不引入晦涩符号
-
----
-
-## 快速示例
+Agents are the primary unit of computation. They encapsulate state and communicate exclusively through typed messages.
 
 ```axon
-// Hello, World
-module Main
-
-fn main() -> Unit | IO {
-    print("Hello, Axon!")
-}
-```
-
-```axon
-// 类型安全的错误处理（无异常）
-module FileProcessor
-
-fn readConfig(path: Path) -> Result<Config, IOError> | IO {
-    let text = File.read(path)?          // ? 自动传播 Err
-    let config = Config.parse(text)?
-    Ok(config)
-}
-```
-
-```axon
-// AI Agent 定义
-module MyAgent
-
-agent Summarizer {
-    state { processed: Int = 0 }
-
-    on Summarize(text: String) -> String | Async, IO {
-        let summary = await llm.complete("Summarize: {text}")
-        processed += 1
-        summary
+agent Counter {
+    state {
+        count: Int = 0
     }
 
-    on Stats -> AgentStats {
-        AgentStats { processed }
+    on Increment {
+        count = count + 1
+    }
+
+    on Decrement {
+        count = count - 1
+    }
+
+    on GetCount -> Int {
+        count
+    }
+
+    on Reset {
+        count = 0
     }
 }
 
-fn main() -> Unit | Async, IO {
-    let agent = spawn Summarizer
-    let result = await agent.ask(Summarize("Axon is a new language..."))
+fn main() -> Unit {
+    let c = spawn Counter
+    c.send(Increment)
+    c.send(Increment)
+    c.send(Increment)
+    let n = c.ask(GetCount)   // => 3
+    c.send(Reset)
+    let n2 = c.ask(GetCount)  // => 0
+    print("Count was {n}, now {n2}")
+}
+```
+
+An agent is structurally similar to a class: `state` fields are instance variables, `on X` handlers are methods. `spawn` creates an instance. `send` is fire-and-forget; `ask` is request-reply (awaits the response).
+
+### Types and Pattern Matching
+
+```axon
+type Shape =
+    | Circle(radius: Float)
+    | Rect(width: Float, height: Float)
+    | Triangle(base: Float, height: Float)
+
+fn area(s: Shape) -> Float {
+    match s {
+        Circle(r)       => PI * r * r
+        Rect(w, h)      => w * h
+        Triangle(b, h)  => 0.5 * b * h
+    }
+}
+```
+
+Matches are exhaustive — missing a variant is a compile error, not a runtime crash.
+
+### Error Handling — No Exceptions
+
+```axon
+fn divide(a: Float, b: Float) -> Result<Float, String> {
+    if b == 0.0 {
+        Err("division by zero")
+    } else {
+        Ok(a / b)
+    }
+}
+
+fn main() -> Unit {
+    match divide(10.0, 3.0) {
+        Ok(n)  => print("Result: {n:.2f}")
+        Err(e) => print("Error: {e}")
+    }
+}
+```
+
+`Result<T, E>` and `Option<T>` are the only error mechanism. No `try/catch`, no unchecked exceptions.
+
+### Effect System
+
+Functions declare which effects they use. The compiler verifies declarations are complete.
+
+```axon
+// This function reads files — must declare FileIO (or the parent effect IO)
+fn load_config(path: String) -> String | IO {
+    let r = read_file(path)
+    result_unwrap_or(r, "")
+}
+
+// Pure function — no effects, always safe to call anywhere
+fn fibonacci(n: Int) -> Int {
+    if n <= 1 { n } else { fibonacci(n - 1) + fibonacci(n - 2) }
+}
+```
+
+**Effect sub-typing**: `FileIO ⊆ IO`, `Network ⊆ IO`, `Env ⊆ IO`. Declaring `| IO` covers all specific IO effects.
+
+Use `--strict-effects` to enforce effect declarations on every function in a file.
+
+### Functions and Closures
+
+```axon
+fn apply_twice(f: Int -> Int, x: Int) -> Int {
+    f(f(x))
+}
+
+fn main() -> Unit {
+    let double = |x: Int| x * 2
+    let result = apply_twice(double, 3)   // => 12
     print(result)
+
+    // Pipeline syntax
+    let nums = [1, 2, 3, 4, 5]
+    let sum  = nums
+        |> list_filter(|n| n % 2 == 0)
+        |> list_map(|n| n * n)
+        |> list_sum()
+    print(sum)   // => 20
 }
 ```
+
+### String Interpolation
 
 ```axon
-// 热更新：agent 运行中升级代码
-#[hot]
-module MyAgent
+let name = "World"
+let n    = 42
+let pi   = 3.14159
 
-// 声明状态迁移（旧版本 → 新版本）
-migrate Summarizer.State {
-    from V1 { processed: Int }
-    to   V2 { processed: Int, history: List<String> }
-    with |old| { processed: old.processed, history: [] }
-}
+print("Hello, {name}!")         // Hello, World!
+print("n = {n}")                // n = 42
+print("pi ≈ {pi:.2f}")         // pi ≈ 3.14
+print("hex: {n:x}")             // hex: 2a
+print("padded: {n:>8}")         // padded:       42
 ```
 
----
-
-## 文档结构
-
-```
-spec/
-├── LANGUAGE_SPEC.md     # 完整语言规范
-├── GRAMMAR.ebnf         # 形式化语法（EBNF）
-├── TYPE_SYSTEM.md       # 类型系统详解
-├── EFFECTS.md           # Effect 系统详解
-├── HOT_RELOAD.md        # 热更新机制
-└── AGENT_MODEL.md       # Agent 编程模型
-
-examples/
-├── 01_hello_world.axon
-├── 02_types_and_patterns.axon
-├── 03_error_handling.axon
-├── 04_agents.axon
-├── 05_hot_reload.axon
-└── 06_ai_assistant.axon
-
-DESIGN_RATIONALE.md      # 设计决策详细说明
-```
-
----
-
-## 与竞品对比
+### Multi-Agent Orchestration
 
 ```axon
-// Rust 中需要写的代码（安全但繁琐）
-fn process(items: Vec<String>) -> Result<Vec<Output>, Error> {
-    items.iter()
-         .map(|item| transform(item))
-         .collect::<Result<Vec<_>, _>>()
+agent Worker {
+    state { id: Int = 0 }
+
+    on SetId(n: Int) { id = n }
+    on Process(x: Int) -> Int { id * x }
 }
 
-// Python 中需要写的代码（简洁但不安全）
-def process(items):
-    return [transform(item) for item in items]  # 运行时才知道出错
+fn main() -> Unit {
+    let w1 = spawn Worker
+    let w2 = spawn Worker
+    let w3 = spawn Worker
 
-// Axon 中的写法（简洁 + 安全）
-fn process(items: List<String>) -> Result<List<Output>, Error> {
-    items |> map(transform) |> collect_result()
+    w1.send(SetId(10))
+    w2.send(SetId(20))
+    w3.send(SetId(30))
+
+    // Send same message to all agents concurrently, collect all results
+    let results = ask_all([w1, w2, w3], Process(5))
+    // results: [50, 100, 150]
+
+    // Race: return the first response
+    let first = ask_any([w1, w2, w3], Process(2))
+    print(results)
+    print(first)
+}
+```
+
+### JSON and Maps
+
+```axon
+fn main() -> Unit {
+    let m = map_insert(
+        map_insert(map_empty(), "name", "Axon"),
+        "version", 1
+    )
+    let s = json_stringify(m)
+    // s = '{"name":"Axon","version":1}'
+
+    let parsed = result_unwrap(json_parse(s))
+    let name = option_unwrap(json_get(parsed, "name"))
+    print(name)  // Axon
+}
+```
+
+### Tool Annotations
+
+Mark functions with `#[tool]` to register them for LLM tool-use dispatch:
+
+```axon
+#[tool("Search the web and return a summary")]
+fn web_search(query: String, max_results: Int) -> String | IO {
+    // ... implementation
+    "results for: {query}"
+}
+
+fn main() -> Unit {
+    let tools = tool_list()
+    // tools: ["web_search"]
+
+    let schema = tool_schema("web_search")
+    // schema: Some({ name: "web_search", description: "...", parameters: { ... } })
+
+    // Dispatch by name with a Map of arguments
+    let args = map_insert(map_insert(map_empty(), "query", "Axon language"), "max_results", 5)
+    let result = tool_call("web_search", args)
 }
 ```
 
 ---
 
-*Axon — 让 AI 写的代码和人工审查的代码一样可靠。*
+## What Works Today
+
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 25 tests pass.**
+
+| Feature | Status |
+|---------|--------|
+| Lexer / Parser | ✅ Complete |
+| Type checker (bidirectional) | ✅ Complete |
+| Effect system (compile-time) | ✅ Complete |
+| Effect sub-typing (FileIO ⊆ IO) | ✅ Complete |
+| `--strict-effects` mode | ✅ Complete |
+| Agents (spawn / send / ask) | ✅ Complete |
+| ask_all / ask_any (concurrent) | ✅ Complete |
+| ADTs + exhaustive pattern match | ✅ Complete |
+| Closures + higher-order functions | ✅ Complete |
+| String interpolation + format specs | ✅ Complete |
+| Named arguments + default params | ✅ Complete |
+| JSON stdlib | ✅ Complete |
+| File IO, env vars, HTTP | ✅ Complete |
+| `#[tool]` annotation + tool_call | ✅ Complete |
+| LLM integration (Anthropic API) | ✅ Complete |
+| Module system | ✅ Complete |
+| REPL with history | ✅ Complete |
+| Hot reload (file-watch mode) | ⚠️ Partial — see below |
+| Generics | 🔜 Next priority |
+| True OS-thread parallelism | 🔜 Planned |
+| Compiled backend | 🔜 Planned |
+
+---
+
+## Known Limitations
+
+These are honest descriptions of current limitations, and why they exist.
+
+### 1. `{` in String Literals Triggers Interpolation
+
+```axon
+// This FAILS — { triggers interpolation
+let s = "{"
+
+// Workaround: build structured strings with json_stringify
+let obj = map_insert(map_empty(), "key", "value")
+let s   = json_stringify(obj)   // ✅ works
+```
+
+**Why**: The lexer treats `{` in any string context as the start of an interpolation block. There is no escape sequence yet (`\{` would fix this). Changing the interpolation delimiter to `${}` would be a breaking change; adding `\{` is the minimal fix.
+
+**Status**: Will be fixed. Workaround exists for all practical cases.
+
+### 2. Hot Reload is File-Restart, Not True Live Patch
+
+`axon run --watch` re-executes the entire program on file change. This works for stateless scripts but loses agent state.
+
+**Why**: True hot reload requires surgically patching running agent handler maps without re-running `main()`. The correct implementation (Erlang/OTP model) is planned but not yet done.
+
+**Goal**: Save file → compiler accepts → running agents receive updated handlers, state preserved. No restart. No intermediate state.
+
+### 3. Concurrency is Cooperative, Not Parallel
+
+Agents run on the Node.js event loop. `ask_all` is concurrent (interleaved via promises), not truly parallel (not OS threads).
+
+**Why**: TypeScript/Node.js prototype. True parallelism requires either `worker_threads` or a compiled native backend.
+
+**Status**: Planned for the native compilation phase.
+
+### 4. No Generics (Yet)
+
+`Unknown` is used as a placeholder where generics are needed. The type checker cannot verify type parameters.
+
+**Why**: HM inference with generics is non-trivial. Deferred to keep the prototype moving, but now prioritized.
+
+**Status**: Next implementation priority.
+
+### 5. No Inheritance
+
+By design — not a limitation.
+
+Axon uses **structural typing** (implicit interfaces via message compatibility), **composition**, and **effect-based contracts** instead of class inheritance. An agent that handles `on Compute(x: Int) -> Int` is compatible anywhere that message type is expected, with no explicit declaration required.
+
+---
+
+## Architecture
+
+```
+src/
+├── lexer.ts          # Tokenizer
+├── parser.ts         # Recursive descent parser → AST
+├── ast.ts            # AST type definitions
+├── checker.ts        # Bidirectional type checker + effect enforcer
+├── interpreter.ts    # Tree-walking interpreter
+├── hot_reload.ts     # File-watch → re-execution (partial implementation)
+├── main.ts           # CLI entry point (run / check / repl)
+└── runtime/
+    ├── value.ts      # AxonValue types, AgentRef, RuntimeError
+    ├── env.ts        # Lexical environment, module registry
+    ├── agent.ts      # Agent spawning, Supervisor
+    └── stdlib.ts     # Standard library (IO, math, string, JSON, HTTP, LLM)
+
+spec/                 # Language specification (authoritative)
+tests/axon/           # 25 passing test programs
+examples/             # Runnable example programs
+```
+
+---
+
+## Running the Tests
+
+```bash
+npm run build
+# Run all tests
+for f in tests/axon/*.axon; do node dist/main.js run "$f"; done
+```
+
+---
+
+## Design Philosophy
+
+**AI writes, humans review.** The language is optimized for LLM code generation. Syntax is regular and unambiguous. Every construct has exactly one way to express it. The grammar fits in a single page.
+
+**Agents, not objects.** Computation is organized around message-passing actors. Shared mutable state between agents is impossible by construction.
+
+**Effects are documentation that the compiler checks.** A function signature tells you exactly what it can do to the outside world. `| IO` means IO. `| IO, LLM` means IO and LLM calls. A pure function with no `|` annotation does neither.
+
+**Composition over inheritance.** Axon has no class hierarchy. Behaviors are composed, not inherited. Structural typing means interfaces are implicit.
+
+**The runtime should be boring.** No garbage collection pauses you have to tune, no lock ordering you have to reason about, no exception propagation you have to trace. The interesting invariants are enforced at compile time.
+
+---
+
+## Roadmap
+
+See [NEXT_PHASE_PLAN_V2.md](NEXT_PHASE_PLAN_V2.md) for the full plan. Current priorities:
+
+1. **Generics** — `List<T>`, `Option<T>`, `Result<T, E>` with real type parameters
+2. **True hot reload** — patch running agent handlers without restart or state loss
+3. **`\{` escape** — fix string literal `{` collision with interpolation
+4. **OS-thread agents** — `worker_threads` backend for true parallelism
+5. **`main()` implicit `| IO`** — make strict-effects the default, not opt-in
+
+---
+
+## Contributing
+
+The language is in active design and prototype phase. The spec (`spec/`) is authoritative. If the interpreter disagrees with the spec, the spec wins.
+
+The test suite in `tests/axon/` is the best current documentation of what actually works.
+
+---
+
+*Axon — compile success is a safety guarantee. Safety is a deployment permission.*

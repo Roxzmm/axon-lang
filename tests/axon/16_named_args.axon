@@ -1,0 +1,59 @@
+// ============================================================
+// Test: Named Arguments + Default Parameters
+// ============================================================
+module Tests.NamedArgs
+
+fn greet(name: String, greeting: String = "Hello") -> String {
+    "{greeting}, {name}!"
+}
+
+fn rect_area(width: Int, height: Int) -> Int {
+    width * height
+}
+
+fn make_point(x: Int, y: Int, z: Int = 0) -> (Int, Int, Int) {
+    (x, y, z)
+}
+
+fn describe(subject: String, verb: String, obj: String) -> String {
+    "{subject} {verb} {obj}"
+}
+
+fn main() -> Unit {
+    // ── Basic named arguments ─────────────────────────────────
+    let r1 = greet(name: "World")
+    assert_eq(r1, "Hello, World!", "default greeting")
+
+    let r2 = greet(name: "Alice", greeting: "Hi")
+    assert_eq(r2, "Hi, Alice!", "custom greeting named")
+
+    // Named args in different order
+    let r3 = greet(greeting: "Hey", name: "Bob")
+    assert_eq(r3, "Hey, Bob!", "reversed named args")
+
+    // ── Mixed positional + named ──────────────────────────────
+    let a1 = rect_area(width: 4, height: 5)
+    assert_eq(a1, 20, "named rect area")
+
+    let a2 = rect_area(4, height: 5)
+    assert_eq(a2, 20, "mixed positional+named")
+
+    // ── Named with default fallback ───────────────────────────
+    let p1 = make_point(x: 1, y: 2)
+    assert_eq(p1[0], 1, "point x")
+    assert_eq(p1[1], 2, "point y")
+    assert_eq(p1[2], 0, "point z default")
+
+    let p2 = make_point(x: 3, y: 4, z: 5)
+    assert_eq(p2[2], 5, "point z explicit")
+
+    // ── Named args reorder ────────────────────────────────────
+    let s1 = describe(obj: "code", subject: "Alice", verb: "writes")
+    assert_eq(s1, "Alice writes code", "fully named reordered")
+
+    // ── Positional fallback (no names) ────────────────────────
+    let r4 = greet("Carol", "Howdy")
+    assert_eq(r4, "Howdy, Carol!", "positional still works")
+
+    print("PASS: named_args")
+}

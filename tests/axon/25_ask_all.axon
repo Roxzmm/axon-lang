@@ -1,0 +1,72 @@
+// ============================================================
+// Test: ask_all / ask_any — multi-agent orchestration
+// ============================================================
+module Tests.AskAll
+
+agent Adder {
+    state {
+        base: Int = 0
+    }
+
+    on SetBase(n: Int) {
+        base = n
+    }
+
+    on Compute(x: Int) -> Int {
+        base + x
+    }
+}
+
+agent Multiplier {
+    state {
+        factor: Int = 1
+    }
+
+    on SetFactor(n: Int) {
+        factor = n
+    }
+
+    on Compute(x: Int) -> Int {
+        factor * x
+    }
+}
+
+fn main() -> Unit {
+    // ── Setup: two independent computation agents ──────────────
+    let a1 = spawn Adder
+    let a2 = spawn Adder
+    let m1 = spawn Multiplier
+
+    a1.send(SetBase(10))
+    a2.send(SetBase(20))
+    m1.send(SetFactor(3))
+
+    // ── ask_all: same message to all agents simultaneously ─────
+    let adders = [a1, a2]
+    let results = ask_all(adders, Compute(5))
+
+    // a1: 10 + 5 = 15, a2: 20 + 5 = 25
+    assert_eq(list_len(results), 2, "ask_all returns 2 results")
+    let r1 = option_unwrap(list_get(results, 0))
+    let r2 = option_unwrap(list_get(results, 1))
+    assert_eq(r1, 15, "adder1: 10 + 5")
+    assert_eq(r2, 25, "adder2: 20 + 5")
+
+    // ── ask_any: race between agents, get first result ─────────
+    let all_agents = [a1, a2, m1]
+    let first = ask_any(all_agents, Compute(4))
+    // All agents respond to Compute(4) — we just need some result
+    // a1: 10+4=14, a2: 20+4=24, m1: 3*4=12 — any of these is valid
+    assert(first != unit, "ask_any returns a result")
+
+    // ── Independent agents maintain separate state ─────────────
+    let n1 = a1.ask(Compute(0))   // 10 + 0 = 10
+    let n2 = a2.ask(Compute(0))   // 20 + 0 = 20
+    let n3 = m1.ask(Compute(7))   // 3 * 7 = 21
+
+    assert_eq(n1, 10, "a1 base=10")
+    assert_eq(n2, 20, "a2 base=20")
+    assert_eq(n3, 21, "m1 factor=3 * 7")
+
+    print("PASS: ask_all")
+}

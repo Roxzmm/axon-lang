@@ -1,0 +1,42 @@
+// ============================================================
+// Test: Effect system — only functions with explicit | annotations are checked
+// ============================================================
+module Tests.Effects
+
+// Function WITH explicit effects — must declare all effects it uses
+fn read_and_greet(path: String) -> String | IO, FileIO {
+    let content = result_unwrap_or(read_file(path), "default")
+    "Read: {content}"
+}
+
+// Function WITH IO effect — can call print
+fn log_message(msg: String) -> Unit | IO {
+    print(msg)
+}
+
+// Pure function — NO explicit effect annotation — can call anything without errors
+// (permissive mode for unannotated functions)
+fn pure_compute(x: Int, y: Int) -> Int {
+    x * y + 1
+}
+
+// Function that has IO but also calls pure functions — fine
+fn mixed_work(n: Int) -> String | IO {
+    let doubled = pure_compute(n, 2)    // pure call from IO fn — allowed
+    "result: {doubled}"
+}
+
+fn main() -> Unit {
+    // ── Pure computation ──────────────────────────────────────
+    assert_eq(pure_compute(3, 4), 13, "pure compute")
+
+    // ── IO-annotated functions work ───────────────────────────
+    let s = mixed_work(5)
+    assert_eq(s, "result: 11", "mixed work")
+
+    // ── Effect annotations are metadata/documentation ─────────
+    // At runtime, effects don't restrict execution — they're
+    // checked at type-check time only (can verify with bad_effects test)
+
+    print("PASS: effects_check")
+}

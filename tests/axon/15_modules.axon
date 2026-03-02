@@ -1,0 +1,54 @@
+// ============================================================
+// Test: Module system — use, imports, lib loading
+// ============================================================
+module Tests.Modules
+
+use Lib.MathUtils
+use Lib.StringUtils
+
+fn main() -> Unit {
+    // ── Math utils ───────────────────────────────────────────
+    assert(gcd(12, 8) == 4,    "gcd(12,8)=4")
+    assert(gcd(100, 75) == 25, "gcd(100,75)=25")
+    assert(lcm(4, 6) == 12,    "lcm(4,6)=12")
+
+    assert(is_prime(2),    "2 is prime")
+    assert(is_prime(7),    "7 is prime")
+    assert(is_prime(13),   "13 is prime")
+    assert(!is_prime(1),   "1 not prime")
+    assert(!is_prime(9),   "9 not prime")
+    assert(!is_prime(15),  "15 not prime")
+
+    let ps = primes_up_to(20)
+    assert(list_len(ps) == 8, "8 primes up to 20")
+    // 2,3,5,7,11,13,17,19
+
+    assert(factorial(0) == 1,   "0! = 1")
+    assert(factorial(5) == 120, "5! = 120")
+    assert(factorial(10) == 3628800, "10!")
+
+    assert(fib(0) == 0,  "fib(0)")
+    assert(fib(1) == 1,  "fib(1)")
+    assert(fib(10) == 55, "fib(10)")
+
+    // ── String utils ─────────────────────────────────────────
+    assert(capitalize("hello") == "Hello",         "capitalize")
+    assert(capitalize("") == "",                   "capitalize empty")
+    assert(capitalize("WORLD") == "World",         "capitalize WORLD")
+
+    assert(title_case("hello world") == "Hello World", "title_case")
+    assert(title_case("the quick brown fox") == "The Quick Brown Fox", "title_case multi")
+
+    assert(count_words("hello world") == 2,        "count_words 2")
+    assert(count_words("  ") == 0,                 "count_words empty")
+    assert(count_words("one") == 1,                "count_words 1")
+
+    assert(is_palindrome("racecar"),               "racecar is palindrome")
+    assert(is_palindrome("level"),                 "level is palindrome")
+    assert(!is_palindrome("hello"),                "hello not palindrome")
+
+    assert(repeat_str("ab", 3) == "ababab",        "repeat_str")
+    assert(repeat_str("x", 0) == "",               "repeat_str 0")
+
+    print("PASS: modules")
+}

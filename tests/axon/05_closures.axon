@@ -1,0 +1,79 @@
+// ============================================================
+// Test: Closures — capture, mutation, higher-order
+// ============================================================
+module Tests.Closures
+
+fn make_adder(n: Int) -> (fn(Int) -> Int) {
+    |x| x + n
+}
+
+fn apply_twice(f: fn(Int) -> Int, x: Int) -> Int {
+    f(f(x))
+}
+
+fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> (fn(Int) -> Int) {
+    |x| f(g(x))
+}
+
+fn make_counter() -> (fn() -> Int) {
+    let mut count = 0
+    || {
+        count = count + 1
+        count
+    }
+}
+
+fn main() -> Unit {
+    // ── Basic closure ───────────────────────────────────────
+    let add5  = make_adder(5)
+    let add10 = make_adder(10)
+
+    assert(add5(3) == 8,    "add5(3)")
+    assert(add10(3) == 13,  "add10(3)")
+    assert(add5(0) == 5,    "add5(0)")
+
+    // ── Closures capture separate environments ──────────────
+    assert(add5(100) != add10(100), "different adders differ")
+
+    // ── Higher-order functions ──────────────────────────────
+    let double = |x| x * 2
+    let inc    = |x| x + 1
+
+    assert(apply_twice(double, 3) == 12, "apply_twice double 3")
+    assert(apply_twice(inc, 5) == 7,     "apply_twice inc 5")
+
+    // ── Compose ─────────────────────────────────────────────
+    let double_then_inc = compose(inc, double)
+    let inc_then_double = compose(double, inc)
+
+    assert(double_then_inc(3) == 7,  "compose: double then inc")
+    assert(inc_then_double(3) == 8,  "compose: inc then double")
+
+    // ── Mutable closure (counter) ───────────────────────────
+    let counter = make_counter()
+    assert(counter() == 1, "counter 1st call")
+    assert(counter() == 2, "counter 2nd call")
+    assert(counter() == 3, "counter 3rd call")
+
+    // Independent counters are isolated
+    let c2 = make_counter()
+    assert(c2() == 1,      "c2 starts at 1")
+    assert(counter() == 4, "original counter at 4")
+
+    // ── Lambda in list operations ───────────────────────────
+    let nums = [1, 2, 3, 4, 5]
+    let multiplier = 3
+    let scaled = list_map(nums, |n| n * multiplier)
+    assert(option_unwrap(list_get(scaled, 0)) == 3,  "scaled capture")
+    assert(option_unwrap(list_get(scaled, 4)) == 15, "scaled last")
+
+    // ── Partial application via closures ────────────────────
+    let nums2   = [10, 20, 30]
+    let add_base = |base| |x| base + x
+    let add100  = add_base(100)
+    let result  = list_map(nums2, add100)
+    assert(option_unwrap(list_get(result, 0)) == 110, "partial apply")
+    assert(option_unwrap(list_get(result, 2)) == 130, "partial apply last")
+
+    print("PASS: closures")
+}

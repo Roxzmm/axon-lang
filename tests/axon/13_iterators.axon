@@ -1,0 +1,98 @@
+// ============================================================
+// Test: Iterators & generators — range, enumerate, zip, chain
+// ============================================================
+module Tests.Iterators
+
+fn main() -> Unit {
+    // ── list_range ───────────────────────────────────────────
+    let r1 = list_range(0, 5)
+    assert(list_len(r1) == 5,                    "range len 5")
+    assert(option_unwrap(list_get(r1, 0)) == 0,  "range[0] == 0")
+    assert(option_unwrap(list_get(r1, 4)) == 4,  "range[4] == 4")
+
+    let r2 = list_range(1, 11)
+    assert(list_sum(r2) == 55,                   "sum 1..10 == 55")
+
+    let r3 = list_range(5, 5)
+    assert(list_len(r3) == 0,                    "empty range")
+
+    // ── list_range_inclusive ─────────────────────────────────
+    let ri = list_range_inclusive(1, 5)
+    assert(list_len(ri) == 5,                    "inclusive range len 5")
+    assert(list_sum(ri) == 15,                   "sum 1..=5 == 15")
+
+    // ── list_enumerate ───────────────────────────────────────
+    let words = ["alpha", "beta", "gamma"]
+    let en    = list_enumerate(words)
+    assert(list_len(en) == 3,                    "enumerate len")
+
+    let first_pair = option_unwrap(list_get(en, 0))
+    // Each element is a (index, value) tuple
+    assert(tuple_len(first_pair) == 2,           "pair is 2-tuple")
+
+    // ── list_zip ─────────────────────────────────────────────
+    let as_ = [1, 2, 3]
+    let bs  = ["a", "b", "c"]
+    let zipped = list_zip(as_, bs)
+    assert(list_len(zipped) == 3,                "zip len 3")
+
+    // ── list_zip with unequal lengths ────────────────────────
+    let short = [10, 20]
+    let long_ = [1, 2, 3, 4, 5]
+    let zs    = list_zip(short, long_)
+    assert(list_len(zs) == 2,                    "zip takes shortest")
+
+    // ── list_flatten ─────────────────────────────────────────
+    let nested = [[1, 2], [3, 4], [5]]
+    let flat   = list_flatten(nested)
+    assert(list_len(flat) == 5,                  "flatten len 5")
+    assert(list_sum(flat) == 15,                 "flatten sum 15")
+
+    // ── list_unique ──────────────────────────────────────────
+    let dupes   = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+    let uniq    = list_unique(dupes)
+    assert(list_len(uniq) == 7,                  "unique 7 elements")
+    assert(list_contains(uniq, 9),               "9 is unique")
+
+    // ── list_take / list_drop ────────────────────────────────
+    let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let head5 = list_take(nums, 5)
+    let tail5 = list_drop(nums, 5)
+
+    assert(list_len(head5) == 5,                 "take 5")
+    assert(list_len(tail5) == 5,                 "drop 5")
+    assert(list_sum(head5) == 15,                "take sum 1..5")
+    assert(list_sum(tail5) == 40,                "drop sum 6..10")
+
+    // ── list_drop (skip first N) ─────────────────────────────
+    let from5 = list_drop(list_range(0, 100), 5)
+    assert(list_len(from5) == 95,                "drop[5..] len 95")
+
+    // ── Chaining higher-order ops ────────────────────────────
+    // Sum of squares of odd numbers from 1 to 20
+    let result =
+        list_range(1, 21)
+        |> list_filter(|n| n % 2 == 1)
+        |> list_map(|n| n * n)
+        |> list_sum
+    assert(result == 1 + 9 + 25 + 49 + 81 + 121 + 169 + 225 + 289 + 361,
+           "sum of odd squares 1..19")
+
+    // ── for loop with range ──────────────────────────────────
+    let mut sum = 0
+    for i in list_range(1, 6) {
+        sum = sum + i
+    }
+    assert(sum == 15, "for loop sum")
+
+    // ── for with enumerate (use tuple_get or index) ──────────
+    let fruits = ["apple", "banana", "cherry"]
+    let mut idx_sum = 0
+    for pair in list_enumerate(fruits) {
+        let i = tuple_get(pair, 0)
+        idx_sum = idx_sum + i
+    }
+    assert(idx_sum == 3, "enumerate indices 0+1+2=3")
+
+    print("PASS: iterators")
+}

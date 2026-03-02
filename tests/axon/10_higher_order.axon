@@ -1,0 +1,84 @@
+// ============================================================
+// Test: Higher-order functions — map, filter, fold, sort, pipe
+// ============================================================
+module Tests.HigherOrder
+
+fn main() -> Unit {
+    let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    // ── map ─────────────────────────────────────────────────
+    let squares  = list_map(nums, |n| n * n)
+    let expected = [1, 4, 9, 16, 25, 36, 49, 64, 81, 100]
+
+    assert(list_len(squares) == 10, "map preserves len")
+    assert(list_sum(squares) == 385, "sum of squares 1..10")
+
+    // ── filter ──────────────────────────────────────────────
+    let evens = list_filter(nums, |n| n % 2 == 0)
+    let odds  = list_filter(nums, |n| n % 2 != 0)
+
+    assert(list_len(evens) == 5, "5 evens in 1..10")
+    assert(list_len(odds) == 5,  "5 odds in 1..10")
+    assert(list_sum(evens) == 30, "sum of evens")
+    assert(list_sum(odds) == 25,  "sum of odds")
+
+    // ── fold ────────────────────────────────────────────────
+    let total  = list_fold(nums, 0, |acc, n| acc + n)
+    let product= list_fold([1,2,3,4,5], 1, |acc, n| acc * n)
+    let concat = list_fold(["a","b","c"], "", |acc, s| acc + s)
+
+    assert(total == 55,      "fold sum 1..10")
+    assert(product == 120,   "fold product 1..5")
+    assert(concat == "abc",  "fold string concat")
+
+    // ── any / all ───────────────────────────────────────────
+    assert(list_any(nums, |n| n > 9),      "any > 9")
+    assert(!list_any(nums, |n| n > 10),    "not any > 10")
+    assert(list_all(nums, |n| n > 0),      "all > 0")
+    assert(!list_all(nums, |n| n % 2 == 0),"not all even")
+
+    // ── find ────────────────────────────────────────────────
+    let first_big = list_find(nums, |n| n > 5)
+    assert(option_is_some(first_big),        "find > 5 found")
+    assert(option_unwrap(first_big) == 6,    "find > 5 is 6")
+
+    let none_found = list_find(nums, |n| n > 100)
+    assert(option_is_none(none_found),       "find > 100 not found")
+
+    // ── flat_map ────────────────────────────────────────────
+    let expanded = list_flat_map([1, 2, 3], |n| [n, n * 10])
+    assert(list_len(expanded) == 6,                   "flat_map len")
+    assert(option_unwrap(list_get(expanded, 0)) == 1,  "flat_map [0]")
+    assert(option_unwrap(list_get(expanded, 1)) == 10, "flat_map [1]")
+    assert(option_unwrap(list_get(expanded, 2)) == 2,  "flat_map [2]")
+
+    // ── sort (default) ───────────────────────────────────────
+    let unsorted = [5, 3, 8, 1, 9, 2, 7, 4, 6]
+    let sorted   = list_sort(unsorted, unit)
+    assert(option_unwrap(list_get(sorted, 0)) == 1, "sort first")
+    assert(option_unwrap(list_get(sorted, 8)) == 9, "sort last")
+    assert(list_sum(sorted) == list_sum(unsorted),   "sort preserves sum")
+
+    // ── sort (custom comparator) ─────────────────────────────
+    let desc = list_sort(unsorted, |a, b| b - a)
+    assert(option_unwrap(list_get(desc, 0)) == 9, "desc sort first is 9")
+    assert(option_unwrap(list_get(desc, 8)) == 1, "desc sort last is 1")
+
+    // ── pipe operator ────────────────────────────────────────
+    let result = [1, 2, 3, 4, 5]
+        |> list_filter(|n| n % 2 == 1)
+        |> list_map(|n| n * n)
+        |> list_sum
+    assert(result == 35, "pipe: odds squared summed = 1+9+25")
+
+    // ── Chained operations ───────────────────────────────────
+    let words   = ["hello", "world", "foo", "bar", "axon"]
+    let long_up = list_map(
+        list_filter(words, |w| len(w) > 3),
+        |w| upper(w)
+    )
+    assert(list_len(long_up) == 3,                       "filter long words")
+    assert(option_unwrap(list_get(long_up, 0)) == "HELLO","first long word upper")
+
+    print("PASS: higher_order")
+}

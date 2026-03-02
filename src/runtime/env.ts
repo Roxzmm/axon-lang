@@ -67,6 +67,15 @@ export class Environment {
     return this.parent?.findOwner(name) ?? null;
   }
 
+  // Iterate current scope's own bindings (for REPL :env)
+  entries(): Array<{ name: string; value: AxonValue; mutable: boolean }> {
+    const result: Array<{ name: string; value: AxonValue; mutable: boolean }> = [];
+    for (const [name, binding] of this.bindings) {
+      result.push({ name, value: binding.value, mutable: binding.mutable });
+    }
+    return result;
+  }
+
   // Dump for debugging
   dump(indent = 0): string {
     const lines: string[] = [];

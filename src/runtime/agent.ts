@@ -46,21 +46,78 @@ export function hotUpdateAgent(agentName: string, newHandlers: Map<string, Agent
 
 // ─── Supervisor ──────────────────────────────────────────────
 
+export interface SupervisorChildConfig {
+  name:        string;
+  spawnConfig: AgentSpawnConfig;
+}
+
 export class Supervisor {
-  private children: Map<string, { ref: AgentRef; restartCount: number }> = new Map();
+  private children: Map<string, {
+    ref:          AgentRef;
+    restartCount: number;
+    restartTimes: number[];   // timestamps of recent restarts
+    config:       AgentSpawnConfig;
+  }> = new Map();
 
-  constructor(private strategy: 'OneForOne' | 'AllForOne' | 'RestForOne' = 'OneForOne') {}
+  constructor(
+    private strategy:      'OneForOne' | 'AllForOne' | 'RestForOne' = 'OneForOne',
+    private maxRestarts:   number = 3,
+    private restartWindow: number = 5000,  // ms
+  ) {}
 
-  addChild(name: string, ref: AgentRef): void {
-    this.children.set(name, { ref, restartCount: 0 });
+  addChild(name: string, ref: AgentRef, config: AgentSpawnConfig): void {
+    // Attach crash handler
+    ref.onCrash = (crashedRef, err) => this.handleCrash(name, crashedRef, err);
+    this.children.set(name, { ref, restartCount: 0, restartTimes: [], config });
   }
 
   getChild(name: string): AgentRef | undefined {
     return this.children.get(name)?.ref;
   }
 
+  private async handleCrash(name: string, crashedRef: AgentRef, err: Error): Promise<void> {
+    const child = this.children.get(name);
+    if (!child) return;
+
+    // Prune old restart timestamps outside the window
+    const now = Date.now();
+    child.restartTimes = child.restartTimes.filter(t => now - t < this.restartWindow);
+
+    if (child.restartTimes.length >= this.maxRestarts) {
+      console.error(`[Supervisor] Agent '${name}' exceeded max restarts (${this.maxRestarts}/${this.restartWindow}ms). Stopping.`);
+      stopAgent(crashedRef.id);
+      this.children.delete(name);
+      return;
+    }
+
+    child.restartTimes.push(now);
+    child.restartCount++;
+    console.error(`[Supervisor] Agent '${name}' crashed (${err.message}). Restarting (attempt ${child.restartCount})...`);
+
+    // Stop the crashed agent
+    stopAgent(crashedRef.id);
+
+    // Re-spawn with same config
+    const newRef = spawnAgent(child.config);
+    newRef.onCrash = (r, e) => this.handleCrash(name, r, e);
+    child.ref = newRef;
+
+    if (this.strategy === 'AllForOne') {
+      // Restart all other children too
+      for (const [otherName, other] of this.children) {
+        if (otherName !== name) {
+          stopAgent(other.ref.id);
+          const newOtherRef = spawnAgent(other.config);
+          newOtherRef.onCrash = (r, e) => this.handleCrash(otherName, r, e);
+          other.ref = newOtherRef;
+        }
+      }
+    }
+  }
+
   stopAll(): void {
     for (const { ref } of this.children.values()) {
+      ref.stop();
       stopAgent(ref.id);
     }
     this.children.clear();

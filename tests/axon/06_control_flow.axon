@@ -1,0 +1,117 @@
+// ============================================================
+// Test: Control Flow — if/else, while, for, loop, break
+// ============================================================
+module Tests.ControlFlow
+
+fn abs_val(n: Int) -> Int {
+    if n < 0 { -n } else { n }
+}
+
+fn sign(n: Int) -> String {
+    if n > 0 {
+        "positive"
+    } else if n < 0 {
+        "negative"
+    } else {
+        "zero"
+    }
+}
+
+fn sum_while(n: Int) -> Int {
+    let mut acc = 0
+    let mut i   = 1
+    while i <= n {
+        acc = acc + i
+        i   = i + 1
+    }
+    acc
+}
+
+fn first_multiple(lst: List<Int>, m: Int) -> Int {
+    let mut found = -1
+    for x in lst {
+        if x % m == 0 {
+            found = x
+            break
+        }
+    }
+    found
+}
+
+fn sum_for(lst: List<Int>) -> Int {
+    let mut total = 0
+    for n in lst {
+        total = total + n
+    }
+    total
+}
+
+fn count_until(limit: Int) -> Int {
+    let mut n = 0
+    loop {
+        n = n + 1
+        if n >= limit { break }
+    }
+    n
+}
+
+fn main() -> Unit {
+    // ── if/else ─────────────────────────────────────────────
+    assert(abs_val(-5) == 5,    "abs negative")
+    assert(abs_val(5) == 5,     "abs positive")
+    assert(abs_val(0) == 0,     "abs zero")
+
+    assert(sign(3) == "positive",  "positive sign")
+    assert(sign(-1) == "negative", "negative sign")
+    assert(sign(0) == "zero",      "zero sign")
+
+    // ── if as expression ────────────────────────────────────
+    let x = if true { 1 } else { 2 }
+    assert(x == 1, "if expression true branch")
+
+    let y = if false { 1 } else { 2 }
+    assert(y == 2, "if expression false branch")
+
+    // ── while ───────────────────────────────────────────────
+    assert(sum_while(10) == 55,   "sum_while 1..10")
+    assert(sum_while(1) == 1,     "sum_while 1..1")
+    assert(sum_while(0) == 0,     "sum_while empty")
+
+    // ── for loop ────────────────────────────────────────────
+    let nums = list_range(1, 6)
+    assert(sum_for(nums) == 15,    "sum via for")
+    assert(sum_for([]) == 0,       "sum empty via for")
+
+    // ── for with break ──────────────────────────────────────
+    let data = [3, 7, 10, 15, 2, 8]
+    assert(first_multiple(data, 5) == 10, "first multiple of 5")
+    assert(first_multiple(data, 3) == 3,  "first multiple of 3")
+    assert(first_multiple(data, 11) == -1,"no multiple of 11")
+
+    // ── loop with break ─────────────────────────────────────
+    assert(count_until(1) == 1,   "count_until 1")
+    assert(count_until(5) == 5,   "count_until 5")
+    assert(count_until(10) == 10, "count_until 10")
+
+    // ── Nested loops ────────────────────────────────────────
+    let mut pairs = 0
+    for i in list_range(1, 4) {
+        for j in list_range(1, 4) {
+            if i != j {
+                pairs = pairs + 1
+            }
+        }
+    }
+    assert(pairs == 6, "nested loops: 6 distinct pairs from 3x3")
+
+    // ── Short-circuit evaluation ────────────────────────────
+    let mut side = false
+    let _ = false && { side = true; true }
+    assert(!side, "short-circuit && didn't eval right side")
+
+    let mut side2 = false
+    let _ = true || { side2 = true; false }
+    assert(!side2, "short-circuit || didn't eval right side")
+
+    print("PASS: control_flow")
+}

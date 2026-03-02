@@ -1,0 +1,128 @@
+// ============================================================
+// Test: Real-world patterns — word count, cache, state machine
+// ============================================================
+module Tests.RealWorld
+
+// ── Word frequency counter ───────────────────────────────────
+
+fn word_count(text: String) -> Map<String, Int> {
+    let words = split(lower(text), " ")
+    list_fold(words, map_empty(), |acc, w| {
+        let trimmed = trim(w)
+        if len(trimmed) == 0 {
+            acc
+        } else {
+            let cur = option_unwrap_or(map_get(acc, trimmed), 0)
+            map_insert(acc, trimmed, cur + 1)
+        }
+    })
+}
+
+// ── Fibonacci with memoization ───────────────────────────────
+
+fn fib_memo() -> (fn(Int) -> Int) {
+    let mut cache = map_empty()
+    fn compute(n: Int) -> Int {
+        if n <= 1 {
+            n
+        } else {
+            match map_get(cache, str(n)) {
+                Some(v) => v
+                None => {
+                    let v = compute(n - 1) + compute(n - 2)
+                    cache = map_insert(cache, str(n), v)
+                    v
+                }
+            }
+        }
+    }
+    compute
+}
+
+// ── State machine: traffic light ─────────────────────────────
+
+type Light { Red  Yellow  Green }
+
+fn next_light(l: Light) -> Light {
+    match l {
+        Red    => Green
+        Green  => Yellow
+        Yellow => Red
+    }
+}
+
+fn light_duration(l: Light) -> Int {
+    match l {
+        Red    => 30
+        Green  => 25
+        Yellow => 5
+    }
+}
+
+// ── Accumulate pipeline ──────────────────────────────────────
+
+fn running_average(nums: List<Float>) -> List<Float> {
+    let result = list_fold(nums, [0.0, 0, []], |acc, x| {
+        let sum_     = option_unwrap(list_get(acc, 0))
+        let count_   = option_unwrap(list_get(acc, 1))
+        let avgs_    = option_unwrap(list_get(acc, 2))
+        let new_sum  = sum_ + x
+        let new_cnt  = count_ + 1
+        let avg      = new_sum / int(new_cnt)
+        [new_sum, new_cnt, list_append(avgs_, avg)]
+    })
+    option_unwrap(list_get(result, 2))
+}
+
+fn main() -> Unit {
+    // ── Word count ───────────────────────────────────────────
+    let text = "the quick brown fox jumps over the lazy dog the fox"
+    let wc   = word_count(text)
+
+    assert(option_unwrap(map_get(wc, "the")) == 3, "the: 3")
+    assert(option_unwrap(map_get(wc, "fox")) == 2, "fox: 2")
+    assert(option_unwrap(map_get(wc, "dog")) == 1, "dog: 1")
+    assert(!map_has(wc, "cat"),                    "no cat")
+
+    // ── Memoized fib ─────────────────────────────────────────
+    let fib = fib_memo()
+    assert(fib(0)  == 0,    "fib(0)")
+    assert(fib(1)  == 1,    "fib(1)")
+    assert(fib(10) == 55,   "fib(10)")
+    assert(fib(15) == 610,  "fib(15)")
+    // Call again — uses cache
+    assert(fib(10) == 55,   "fib(10) cached")
+
+    // ── Traffic light ─────────────────────────────────────────
+    let mut light = Red
+    assert(light_duration(light) == 30, "red 30s")
+
+    light = next_light(light)
+    assert(light_duration(light) == 25, "green 25s")
+
+    light = next_light(light)
+    assert(light_duration(light) == 5, "yellow 5s")
+
+    light = next_light(light)
+    assert(light_duration(light) == 30, "back to red")
+
+    // Simulate 6 cycles
+    let mut cycle_count = 0
+    let mut cur = Red
+    while cycle_count < 6 {
+        cur = next_light(cur)
+        cycle_count = cycle_count + 1
+    }
+    // 6 transitions from Red: G Y R G Y R → Red
+    assert(light_duration(cur) == 30, "back to red after 6 steps")
+
+    // ── Running average ──────────────────────────────────────
+    let data = [2.0, 4.0, 6.0, 8.0, 10.0]
+    let avgs = running_average(data)
+    assert(list_len(avgs) == 5, "5 averages")
+    // First average is 2.0/1 = 2, last is (2+4+6+8+10)/5 = 6
+    assert(option_unwrap(list_get(avgs, 0)) == 2.0, "first avg 2.0")
+    assert(option_unwrap(list_get(avgs, 4)) == 6.0, "last avg 6.0")
+
+    print("PASS: real_world")
+}

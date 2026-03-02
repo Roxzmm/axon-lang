@@ -1,0 +1,74 @@
+// ============================================================
+// Test: Maps — creation, get, insert, remove, iteration
+// ============================================================
+module Tests.Maps
+
+fn main() -> Unit {
+    // ── Construction ─────────────────────────────────────────
+    let m0 = map_empty()
+    assert(map_is_empty(m0),     "empty map is empty")
+    assert(map_len(m0) == 0,     "empty map len 0")
+
+    // ── Insert ───────────────────────────────────────────────
+    let m1 = map_insert(m0, "a", 1)
+    let m2 = map_insert(m1, "b", 2)
+    let m3 = map_insert(m2, "c", 3)
+
+    assert(map_len(m3) == 3,     "map len 3")
+    assert(!map_is_empty(m3),    "non-empty map")
+
+    // ── Get ──────────────────────────────────────────────────
+    let va = map_get(m3, "a")
+    let vb = map_get(m3, "b")
+    let vx = map_get(m3, "x")
+
+    assert(option_is_some(va),               "key 'a' found")
+    assert(option_unwrap(va) == 1,           "value of 'a'")
+    assert(option_is_some(vb),               "key 'b' found")
+    assert(option_unwrap(vb) == 2,           "value of 'b'")
+    assert(option_is_none(vx),               "key 'x' not found")
+
+    // ── Has ──────────────────────────────────────────────────
+    assert(map_has(m3, "a"),     "has 'a'")
+    assert(map_has(m3, "c"),     "has 'c'")
+    assert(!map_has(m3, "z"),    "no 'z'")
+
+    // ── Remove ───────────────────────────────────────────────
+    let m4 = map_remove(m3, "b")
+    assert(map_len(m4) == 2,     "after remove len 2")
+    assert(!map_has(m4, "b"),    "b removed")
+    assert(map_has(m4, "a"),     "a still there")
+
+    // ── Update (re-insert) ───────────────────────────────────
+    let m5 = map_insert(m3, "a", 99)
+    assert(option_unwrap(map_get(m5, "a")) == 99, "updated a to 99")
+    assert(map_len(m5) == 3,                       "len unchanged after update")
+
+    // ── Keys / Values ────────────────────────────────────────
+    let keys = map_keys(m3)
+    assert(list_len(keys) == 3,  "3 keys")
+    assert(list_contains(keys, "a"), "keys contain a")
+    assert(list_contains(keys, "b"), "keys contain b")
+    assert(list_contains(keys, "c"), "keys contain c")
+
+    let vals = map_values(m3)
+    assert(list_len(vals) == 3,  "3 values")
+    assert(list_sum(vals) == 6,  "sum of 1+2+3")
+
+    // ── Entries ──────────────────────────────────────────────
+    let entries = map_entries(m3)
+    assert(list_len(entries) == 3, "3 entries")
+
+    // ── map_new from list of tuples ──────────────────────────
+    let m6 = map_new([("x", 10), ("y", 20), ("z", 30)])
+    assert(map_len(m6) == 3,                         "map_new len")
+    assert(option_unwrap(map_get(m6, "y")) == 20,    "map_new get y")
+
+    // ── Nested maps ──────────────────────────────────────────
+    let inner = map_insert(map_empty(), "n", 42)
+    let outer = map_insert(map_empty(), "inner", inner)
+    let got_inner = option_unwrap(map_get(outer, "inner"))
+    assert(option_unwrap(map_get(got_inner, "n")) == 42, "nested map access")
+
+    print("PASS: maps")
+}

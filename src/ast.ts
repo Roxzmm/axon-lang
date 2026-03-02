@@ -102,16 +102,17 @@ export interface Param {
 }
 
 export interface FnDecl {
-  kind:       'FnDecl';
-  vis:        'pub' | 'priv' | 'internal';
-  name:       string;
-  typeParams: string[];
-  params:     Param[];
-  retTy:      TypeExpr | null;
-  effects:    string[];
-  body:       Expr | null;   // null = abstract (in trait)
-  annots:     string[];
-  span:       Span;
+  kind:            'FnDecl';
+  vis:             'pub' | 'priv' | 'internal';
+  name:            string;
+  typeParams:      string[];
+  params:          Param[];
+  retTy:           TypeExpr | null;
+  effects:         string[];
+  effectsExplicit: boolean;   // true = user wrote "| Effect" in source
+  body:            Expr | null;   // null = abstract (in trait)
+  annots:          string[];
+  span:            Span;
 }
 
 export interface TypeVariant {
@@ -147,12 +148,13 @@ export interface StateField {
 }
 
 export interface AgentHandler {
-  msgType:   string;
-  params:    Param[];
-  retTy:     TypeExpr | null;
-  effects:   string[];
-  body:      Expr;
-  span:      Span;
+  msgType:         string;
+  params:          Param[];
+  retTy:           TypeExpr | null;
+  effects:         string[];
+  effectsExplicit: boolean;
+  body:            Expr;
+  span:            Span;
 }
 
 export interface AgentDecl {

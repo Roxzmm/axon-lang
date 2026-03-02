@@ -1,0 +1,128 @@
+// ============================================================
+// Test: Pattern Matching — ADTs, destructuring, guards
+// ============================================================
+module Tests.Patterns
+
+type Shape {
+    Circle(Float)
+    Rectangle(Float, Float)
+    Triangle(Float, Float, Float)
+}
+
+type Color {
+    Red
+    Green
+    Blue
+    Custom(Int, Int, Int)
+}
+
+fn area(s: Shape) -> Float {
+    match s {
+        Circle(r)         => PI * r * r
+        Rectangle(w, h)   => w * h
+        Triangle(a, b, c) => {
+            let sp = (a + b + c) / 2.0
+            sqrt(sp * (sp - a) * (sp - b) * (sp - c))
+        }
+    }
+}
+
+fn color_name(c: Color) -> String {
+    match c {
+        Red        => "red"
+        Green      => "green"
+        Blue       => "blue"
+        Custom(r, g, b) => "custom"
+    }
+}
+
+fn classify(n: Int) -> String {
+    match n {
+        0         => "zero"
+        1         => "one"
+        2 | 3 | 5 | 7 => "small prime"
+        _         => if n < 0 { "negative" } else { "other" }
+    }
+}
+
+fn describe_list(lst: List<Int>) -> String {
+    match lst {
+        []           => "empty"
+        [x]          => "single"
+        [x, y]       => "pair"
+        [x, y, ..rest] => "many"
+    }
+}
+
+fn main() -> Unit {
+    // ── Shape ADT and area calculation ──────────────────────
+    let c  = Circle(2.0)
+    let r  = Rectangle(3.0, 4.0)
+
+    let ca = area(c)
+    let ra = area(r)
+
+    assert(ra == 12.0, "rectangle area")
+    assert(ca > 12.5 && ca < 12.6, "circle area ~12.566")
+
+    // ── Color ADT ───────────────────────────────────────────
+    assert(color_name(Red) == "red",     "Red name")
+    assert(color_name(Green) == "green", "Green name")
+    assert(color_name(Blue) == "blue",   "Blue name")
+    assert(color_name(Custom(255, 0, 0)) == "custom", "Custom color")
+
+    // ── Literal patterns ────────────────────────────────────
+    assert(classify(0) == "zero",        "literal 0")
+    assert(classify(1) == "one",         "literal 1")
+    assert(classify(3) == "small prime", "or-pattern prime")
+    assert(classify(5) == "small prime", "or-pattern prime 5")
+    assert(classify(-1) == "negative",   "wildcard negative")
+    assert(classify(100) == "other",     "wildcard other")
+
+    // ── List patterns ───────────────────────────────────────
+    assert(describe_list([]) == "empty",  "empty list pattern")
+    assert(describe_list([1]) == "single","single element")
+    assert(describe_list([1, 2]) == "pair","pair")
+    assert(describe_list([1, 2, 3]) == "many", "rest pattern")
+
+    // ── Tuple destructuring ─────────────────────────────────
+    let pair = (10, 20)
+    let (a, b) = pair
+    assert(a == 10, "tuple destructure first")
+    assert(b == 20, "tuple destructure second")
+
+    let triple = (1, 2, 3)
+    let (x, y, z) = triple
+    assert(x + y + z == 6, "triple sum")
+
+    // ── Nested destructuring ─────────────────────────────────
+    let nested = (Circle(1.0), Rectangle(2.0, 3.0))
+    let (sh1, sh2) = nested
+    assert(area(sh2) == 6.0, "nested tuple + ADT")
+
+    // ── Guard patterns ──────────────────────────────────────
+    fn guard_test(n: Int) -> String {
+        match n {
+            x if x < 0  => "negative"
+            x if x == 0 => "zero"
+            x if x < 10 => "small"
+            _            => "large"
+        }
+    }
+    assert(guard_test(-5) == "negative", "guard negative")
+    assert(guard_test(0)  == "zero",     "guard zero")
+    assert(guard_test(7)  == "small",    "guard small")
+    assert(guard_test(42) == "large",    "guard large")
+
+    // ── Bind patterns (@) ───────────────────────────────────
+    fn bind_test(lst: List<Int>) -> Int {
+        match lst {
+            [h, ..rest] => h + list_len(rest)
+            []          => -1
+        }
+    }
+    assert(bind_test([10, 20, 30]) == 12, "bind pattern head + rest len")
+    assert(bind_test([]) == -1,           "bind pattern empty")
+
+    print("PASS: patterns")
+}

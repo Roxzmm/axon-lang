@@ -1,0 +1,77 @@
+// ============================================================
+// Test: Supervisor — agent monitoring and concurrent agents
+// ============================================================
+module Tests.Supervisor
+
+agent Counter {
+    state {
+        tally: Int = 0
+    }
+
+    on Increment {
+        tally = tally + 1
+    }
+
+    on GetTally -> Int {
+        tally
+    }
+
+    on Reset {
+        tally = 0
+    }
+}
+
+agent Worker {
+    state {
+        attempts: Int = 0
+    }
+
+    on TryWork -> String {
+        attempts = attempts + 1
+        "attempt {attempts}"
+    }
+
+    on GetAttempts -> Int {
+        attempts
+    }
+}
+
+fn main() -> Unit {
+    // ── Basic agent lifecycle ─────────────────────────────────
+    let c = spawn Counter
+    c.send(Increment)
+    c.send(Increment)
+    c.send(Increment)
+    let n = c.ask(GetTally)
+    assert_eq(n, 3, "counter incremented 3 times")
+
+    c.send(Reset)
+    let n2 = c.ask(GetTally)
+    assert_eq(n2, 0, "counter reset")
+
+    // ── Agent processes messages sequentially ─────────────────
+    let w = spawn Worker
+    let r1 = w.ask(TryWork)
+    let r2 = w.ask(TryWork)
+    let r3 = w.ask(TryWork)
+
+    assert_eq(r1, "attempt 1", "first attempt")
+    assert_eq(r2, "attempt 2", "second attempt")
+    assert_eq(r3, "attempt 3", "third attempt")
+
+    let total = w.ask(GetAttempts)
+    assert_eq(total, 3, "three total attempts")
+
+    // ── Multiple agents run independently ─────────────────────
+    let c2 = spawn Counter
+    c2.send(Increment)
+    c2.send(Increment)
+
+    let n3 = c.ask(GetTally)   // original counter still at 0 (was reset)
+    let n4 = c2.ask(GetTally)  // new counter at 2
+
+    assert_eq(n3, 0, "original counter unchanged")
+    assert_eq(n4, 2, "second counter at 2")
+
+    print("PASS: supervisor")
+}

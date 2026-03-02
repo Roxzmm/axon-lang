@@ -81,14 +81,29 @@ export class Parser {
       this.advance();
       this.expect(TokenKind.LBracket);
       const name = this.expectIdent();
-      // Optional annotation arguments
+      // Optional annotation arguments — capture first string arg if present
+      let fullAnnot = name;
       if (this.check(TokenKind.LParen)) {
         this.advance();
-        while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) this.advance();
+        const argParts: string[] = [];
+        let depth = 1;
+        while (!this.check(TokenKind.EOF) && depth > 0) {
+          const tok = this.cur();
+          if (tok.kind === TokenKind.LParen) depth++;
+          if (tok.kind === TokenKind.RParen) { depth--; if (depth === 0) break; }
+          // For string tokens, reconstruct with quotes
+          if (tok.kind === TokenKind.StringLit) {
+            argParts.push(`"${tok.value}"`);
+          } else {
+            argParts.push(tok.value);
+          }
+          this.advance();
+        }
         this.expect(TokenKind.RParen);
+        fullAnnot = `${name}(${argParts.join('')})`;
       }
       this.expect(TokenKind.RBracket);
-      annots.push(name);
+      annots.push(fullAnnot);
     }
     return annots;
   }
@@ -130,8 +145,10 @@ export class Parser {
 
     // Effects
     const effects: string[] = [];
+    let effectsExplicit = false;
     if (this.check(TokenKind.Bar)) {
       this.advance();
+      effectsExplicit = true;
       effects.push(this.expectIdent());
       while (this.check(TokenKind.Comma)) {
         this.advance();
@@ -148,7 +165,7 @@ export class Parser {
       body = this.parseBlock();
     }
 
-    return { kind: 'FnDecl', vis, name, typeParams, params, retTy, effects, body, annots, span };
+    return { kind: 'FnDecl', vis, name, typeParams, params, retTy, effects, effectsExplicit, body, annots, span };
   }
 
   private parseParamList(): Param[] {
@@ -193,15 +210,58 @@ export class Parser {
       this.expect(TokenKind.Gt);
     }
 
-    this.expect(TokenKind.Assign);
+    // '=' is optional: both `type Foo = { ... }` and `type Foo { ... }` are valid
+    if (this.check(TokenKind.Assign)) this.advance();
     const def = this.parseTypeDef();
     return { kind: 'TypeDecl', vis, name, typeParams, def, span };
   }
 
   private parseTypeDef(): TypeDef {
-    // Record type: { ... }
+    // Braced type: either Record { field: type } or Enum { Variant(...) }
     if (this.check(TokenKind.LBrace)) {
       this.advance();
+
+      // Peek: if first non-empty token is uppercase → Enum body
+      if (this.checkIdent() && this.isUpperIdent(this.cur().value)) {
+        // Enum body: { Variant | Variant(...) | Variant { ... } }
+        const variants: TypeVariant[] = [];
+        while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
+          if (this.check(TokenKind.Bar)) this.advance(); // optional | separator
+          const span = this.span();
+          const varName = this.expectIdent();
+          let fields: TypeVariantField = { kind: 'Tuple', types: [] };
+
+          if (this.check(TokenKind.LParen)) {
+            this.advance();
+            const types: TypeExpr[] = [];
+            while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) {
+              types.push(this.parseType());
+              if (!this.check(TokenKind.RParen)) this.expect(TokenKind.Comma);
+            }
+            this.expect(TokenKind.RParen);
+            fields = { kind: 'Tuple', types };
+          } else if (this.check(TokenKind.LBrace)) {
+            this.advance();
+            const recFields: { name: string; ty: TypeExpr }[] = [];
+            while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
+              const fn_ = this.expectIdent();
+              this.expect(TokenKind.Colon);
+              const ty = this.parseType();
+              recFields.push({ name: fn_, ty });
+              if (this.check(TokenKind.Comma) || this.check(TokenKind.Semicolon)) this.advance();
+            }
+            this.expect(TokenKind.RBrace);
+            fields = { kind: 'Record', fields: recFields };
+          }
+
+          variants.push({ name: varName, fields: [fields], span });
+          if (this.check(TokenKind.Comma)) this.advance(); // optional comma between variants
+        }
+        this.expect(TokenKind.RBrace);
+        return { kind: 'Enum', variants };
+      }
+
+      // Record body: { field: type, ... }
       const fields: { name: string; ty: TypeExpr }[] = [];
       while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
         const n = this.expectIdent();
@@ -330,8 +390,10 @@ export class Parser {
     }
 
     const effects: string[] = [];
+    let effectsExplicit = false;
     if (this.check(TokenKind.Bar)) {
       this.advance();
+      effectsExplicit = true;
       effects.push(this.expectIdent());
       while (this.check(TokenKind.Comma)) {
         this.advance();
@@ -347,7 +409,7 @@ export class Parser {
       body = this.parseBlock();
     }
 
-    return { msgType, params, retTy, effects, body, span };
+    return { msgType, params, retTy, effects, effectsExplicit, body, span };
   }
 
   // ── Const Declaration ────────────────────────────────────
@@ -547,12 +609,34 @@ export class Parser {
     return left;
   }
 
-  private parseOr():     Expr { return this.parseBinOp([[TokenKind.Or, '||']], () => this.parseAnd()); }
+  private parseOr(): Expr {
+    let left = this.parseAnd();
+    // '||' is also the zero-arg lambda prefix, so it's only a binary op when on the same line
+    while (this.check(TokenKind.Or) && this.tokens[this.pos].line === this.tokens[this.pos - 1]?.line) {
+      const span = this.span();
+      const op = this.advance().value;
+      const right = this.parseAnd();
+      left = { kind: 'Binary', op, left, right, span };
+    }
+    return left;
+  }
   private parseAnd():    Expr { return this.parseBinOp([[TokenKind.And, '&&']], () => this.parseEq()); }
   private parseEq():     Expr { return this.parseBinOp([[TokenKind.Eq,'=='],[TokenKind.Neq,'!=']], () => this.parseCmp()); }
   private parseCmp():    Expr { return this.parseBinOp([[TokenKind.Lt,'<'],[TokenKind.Gt,'>'],[TokenKind.Lte,'<='],[TokenKind.Gte,'>=']], () => this.parseAdd()); }
   private parseAdd():    Expr { return this.parseBinOp([[TokenKind.Plus,'+'],[TokenKind.Minus,'-']], () => this.parseMul()); }
-  private parseMul():    Expr { return this.parseBinOp([[TokenKind.Star,'*'],[TokenKind.Slash,'/'],[TokenKind.Percent,'%']], () => this.parseUnary()); }
+  private parseMul():    Expr { return this.parseBinOp([[TokenKind.Star,'*'],[TokenKind.Slash,'/'],[TokenKind.Percent,'%']], () => this.parsePow()); }
+
+  // Right-associative: 2 ** 3 ** 2 = 2 ** (3 ** 2) = 512
+  private parsePow(): Expr {
+    const left = this.parseUnary();
+    if (this.check(TokenKind.Power)) {
+      const span = this.span();
+      this.advance();
+      const right = this.parsePow(); // right-recursive → right-associative
+      return { kind: 'Binary', op: '**', left, right, span };
+    }
+    return left;
+  }
 
   private parseUnary(): Expr {
     const span = this.span();
@@ -572,6 +656,9 @@ export class Parser {
 
     while (true) {
       const span = this.span();
+      // Line of last consumed token — used to prevent cross-line index/call ambiguity
+      const prevLine = this.tokens[this.pos - 1]?.line ?? 0;
+      const curLine  = span.line;
 
       // try operator ?
       if (this.check(TokenKind.Question)) {
@@ -587,7 +674,7 @@ export class Parser {
         continue;
       }
 
-      // field access / method call
+      // field access / method call (allowed across lines for chaining)
       if (this.check(TokenKind.Dot)) {
         this.advance();
         if (this.checkIdent()) {
@@ -604,8 +691,8 @@ export class Parser {
         }
       }
 
-      // index
-      if (this.check(TokenKind.LBracket)) {
+      // index — only on same line as previous token to avoid match arm ambiguity
+      if (this.check(TokenKind.LBracket) && curLine === prevLine) {
         this.advance();
         const index = this.parseExpr();
         this.expect(TokenKind.RBracket);
@@ -613,8 +700,8 @@ export class Parser {
         continue;
       }
 
-      // function call
-      if (this.check(TokenKind.LParen)) {
+      // function call — only on same line as previous token
+      if (this.check(TokenKind.LParen) && curLine === prevLine) {
         this.advance();
         const args = this.parseCallArgs();
         this.expect(TokenKind.RParen);
@@ -704,6 +791,13 @@ export class Parser {
 
     // match
     if (tok.kind === TokenKind.KwMatch) return this.parseMatch();
+
+    // Zero-argument lambda: || body
+    if (tok.kind === TokenKind.Or) {
+      this.advance(); // consume ||
+      const body = this.check(TokenKind.LBrace) ? this.parseBlock() : this.parseExpr();
+      return { kind: 'Lambda', params: [], body, span };
+    }
 
     // Lambda |params| body
     if (tok.kind === TokenKind.Bar) return this.parseLambda();
@@ -843,6 +937,17 @@ export class Parser {
       const init = this.parseExpr();
       this.skipSemicolon();
       return { kind: 'LetStmt', pat, ty, init, span };
+    }
+
+    // Local function declaration: fn name(...) { body } → let name = |params| body
+    if (this.check(TokenKind.KwFn)) {
+      const fnDecl = this.parseFnDecl('priv', []);
+      if (fnDecl.body) {
+        const lambda: Expr = { kind: 'Lambda', params: fnDecl.params, body: fnDecl.body, span: fnDecl.span };
+        const pat: Pattern = { kind: 'IdentPat', name: fnDecl.name, span: fnDecl.span };
+        return { kind: 'LetStmt', pat, ty: null, init: lambda, span };
+      }
+      return { kind: 'ExprStmt', expr: { kind: 'UnitLit', span: fnDecl.span }, span };
     }
 
     if (this.check(TokenKind.KwFor)) {

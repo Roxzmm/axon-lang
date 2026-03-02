@@ -1,0 +1,84 @@
+// ============================================================
+// Test: JSON parse / stringify round-trip
+// ============================================================
+module Tests.Json
+
+fn main() -> Unit {
+    // ── json_parse: primitives ────────────────────────────────
+    let n = json_parse("42")
+    assert(result_is_ok(n), "parse int ok")
+    assert_eq(result_unwrap(n), 42, "parsed int value")
+
+    let f = json_parse("3.14")
+    assert(result_is_ok(f), "parse float ok")
+
+    let b = json_parse("true")
+    assert(result_is_ok(b), "parse bool ok")
+    assert_eq(result_unwrap(b), true, "parsed bool")
+
+    let s = json_parse("\"hello\"")
+    assert(result_is_ok(s), "parse string ok")
+    assert_eq(result_unwrap(s), "hello", "parsed string")
+
+    let nu = json_parse("null")
+    assert(result_is_ok(nu), "parse null ok")
+    assert(option_is_none(result_unwrap(nu)), "null -> None")
+
+    // ── json_parse: error case ────────────────────────────────
+    let bad = json_parse("not valid json !!!!")
+    assert(result_is_err(bad), "invalid json -> Err")
+
+    // ── json_parse: array → List ──────────────────────────────
+    let arr = result_unwrap(json_parse("[1, 2, 3]"))
+    assert_eq(len(arr), 3, "array len 3")
+    assert_eq(list_sum(arr), 6, "array sum")
+
+    let nested = result_unwrap(json_parse("[\"a\", \"b\", \"c\"]"))
+    assert_eq(len(nested), 3, "string array len")
+
+    // ── json_parse: object via json_stringify round-trip ─────
+    // Build a map, stringify it, then parse it back
+    let orig_map = map_insert(map_insert(map_empty(), "x", 1), "y", 2)
+    let json_str = json_stringify(orig_map)  // produces {"x":1,"y":2} or similar
+    let parsed = result_unwrap(json_parse(json_str))
+
+    let x_val = json_get(parsed, "x")
+    assert(option_is_some(x_val), "parsed map has x")
+    assert_eq(option_unwrap(x_val), 1, "x == 1")
+
+    let y_val = json_get(parsed, "y")
+    assert(option_is_some(y_val), "parsed map has y")
+    assert_eq(option_unwrap(y_val), 2, "y == 2")
+
+    let missing = json_get(parsed, "z")
+    assert(option_is_none(missing), "missing key -> None")
+
+    // ── json_stringify ────────────────────────────────────────
+    let s1 = json_stringify(42)
+    assert_eq(s1, "42", "stringify int")
+
+    let s2 = json_stringify("hello")
+    assert_eq(s2, "\"hello\"", "stringify string")
+
+    let s3 = json_stringify(true)
+    assert_eq(s3, "true", "stringify bool")
+
+    // ── Round-trip: list ──────────────────────────────────────
+    let original = [1, 2, 3]
+    let list_str  = json_stringify(original)
+    let reparsed  = result_unwrap(json_parse(list_str))
+    assert_eq(len(reparsed), 3, "round-trip list len")
+
+    // ── json_stringify_pretty produces multi-line output ──────
+    let pretty_num = json_stringify_pretty(42)
+    assert_eq(pretty_num, "42", "pretty int")
+
+    let pretty_list = json_stringify_pretty([1, 2])
+    assert(contains(pretty_list, "\n"), "pretty list has newline")
+
+    // ── json_get on non-map returns None ─────────────────────
+    let not_a_map = json_get(42, "x")
+    assert(option_is_none(not_a_map), "json_get on non-map")
+
+    print("PASS: json")
+}

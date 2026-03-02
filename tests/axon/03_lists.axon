@@ -1,0 +1,109 @@
+// ============================================================
+// Test: Lists — construction, operations, higher-order fns
+// ============================================================
+module Tests.Lists
+
+fn main() -> Unit {
+    // ── Construction ────────────────────────────────────────
+    let empty = []
+    let nums  = [1, 2, 3, 4, 5]
+    let strs  = ["a", "b", "c"]
+
+    assert(list_len(empty) == 0, "empty list len")
+    assert(list_len(nums) == 5,  "nums len")
+    assert(list_is_empty(empty), "empty is_empty")
+    assert(!list_is_empty(nums), "non-empty is_empty false")
+
+    // ── Access ──────────────────────────────────────────────
+    let h = list_head(nums)
+    assert(option_is_some(h),           "head is Some")
+    assert(option_unwrap(h) == 1,       "head value")
+    assert(option_is_none(list_head(empty)), "head of empty is None")
+
+    let lst = list_last(nums)
+    assert(option_unwrap(lst) == 5,     "last value")
+
+    let g = list_get(nums, 2)
+    assert(option_unwrap(g) == 3,       "get index 2")
+    assert(option_is_none(list_get(nums, 99)), "get out-of-bounds is None")
+
+    // ── Slicing ─────────────────────────────────────────────
+    assert(list_len(list_take(nums, 3)) == 3, "take 3")
+    assert(option_unwrap(list_get(list_take(nums, 3), 0)) == 1, "take head")
+    assert(list_len(list_drop(nums, 2)) == 3, "drop 2")
+    assert(option_unwrap(list_get(list_drop(nums, 2), 0)) == 3, "drop first element")
+
+    // ── Mutation-free updates ───────────────────────────────
+    let with6    = list_append(nums, 6)
+    let with0    = list_prepend(0, nums)
+    let combined = list_concat(nums, strs)
+
+    assert(list_len(with6) == 6,        "append len")
+    assert(list_len(nums) == 5,         "original unchanged after append")
+    assert(list_len(with0) == 6,        "prepend len")
+    assert(option_unwrap(list_get(with0, 0)) == 0, "prepend first element")
+    assert(list_len(combined) == 8,     "concat len")
+
+    // ── Reverse ─────────────────────────────────────────────
+    let rev = list_reverse(nums)
+    assert(option_unwrap(list_get(rev, 0)) == 5, "reverse first")
+    assert(option_unwrap(list_get(rev, 4)) == 1, "reverse last")
+
+    // ── Contains ────────────────────────────────────────────
+    assert(list_contains(nums, 3),    "contains 3")
+    assert(!list_contains(nums, 99),  "not contains 99")
+
+    // ── Aggregate ───────────────────────────────────────────
+    assert(list_sum(nums) == 15,      "sum 1..5")
+    assert(list_sum(empty) == 0,      "sum empty")
+
+    // ── Range ───────────────────────────────────────────────
+    let r = list_range(1, 6)
+    assert(list_len(r) == 5,                      "range len")
+    assert(option_unwrap(list_get(r, 0)) == 1,    "range start")
+    assert(option_unwrap(list_get(r, 4)) == 5,    "range end")
+
+    let ri = list_range_inclusive(1, 5)
+    assert(list_len(ri) == 5,                     "range_inclusive len")
+
+    // ── Higher-order functions ──────────────────────────────
+    let doubled  = list_map(nums, |n| n * 2)
+    let evens    = list_filter(nums, |n| n % 2 == 0)
+    let total    = list_fold([1, 2, 3, 4, 5], 0, |acc, n| acc + n)
+
+    assert(list_len(doubled) == 5,                    "map len preserved")
+    assert(option_unwrap(list_get(doubled, 0)) == 2,  "map first")
+    assert(option_unwrap(list_get(doubled, 4)) == 10, "map last")
+
+    assert(list_len(evens) == 2,                      "filter evens count")
+    assert(option_unwrap(list_get(evens, 0)) == 2,    "filter first even")
+    assert(option_unwrap(list_get(evens, 1)) == 4,    "filter second even")
+
+    assert(total == 15,                               "fold sum")
+
+    // ── any / all ───────────────────────────────────────────
+    assert(list_any(nums, |n| n > 4),          "any > 4")
+    assert(!list_any(nums, |n| n > 10),        "not any > 10")
+    assert(list_all(nums, |n| n > 0),          "all > 0")
+    assert(!list_all(nums, |n| n > 3),         "not all > 3")
+
+    // ── Unique / flatten ────────────────────────────────────
+    let dupes  = [1, 2, 2, 3, 3, 3, 1]
+    let unique = list_unique(dupes)
+    assert(list_len(unique) == 3,              "unique count")
+
+    let nested   = [[1, 2], [3, 4], [5]]
+    let flat     = list_flatten(nested)
+    assert(list_len(flat) == 5,                "flatten len")
+    assert(option_unwrap(list_get(flat, 2)) == 3, "flatten middle")
+
+    // ── Enumerate ───────────────────────────────────────────
+    let enum_list = list_enumerate(["a", "b", "c"])
+    assert(list_len(enum_list) == 3,           "enumerate len")
+
+    // ── Zip ─────────────────────────────────────────────────
+    let zipped = list_zip([1, 2, 3], ["a", "b", "c"])
+    assert(list_len(zipped) == 3,              "zip len")
+
+    print("PASS: lists")
+}

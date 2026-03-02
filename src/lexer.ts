@@ -262,8 +262,8 @@ export class Lexer {
     const startCol  = this.col;
     const ch = this.src[this.pos];
 
-    // Numbers
-    if (this.isDigit(ch) || (ch === '-' && this.isDigit(this.peek(1)) && !this.isAlpha(this.peek(-1)))) {
+    // Numbers — negative literals handled by parser's unary minus
+    if (this.isDigit(ch)) {
       return this.readNumber(startLine, startCol);
     }
 

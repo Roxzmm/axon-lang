@@ -1,0 +1,38 @@
+// ============================================================
+// Test: --strict-effects mode — effect subtype hierarchy
+// ============================================================
+// NOTE: This test is run WITHOUT --strict-effects so all functions pass.
+// It validates that the effect SUBTYPE system works correctly:
+//   FileIO <: IO  (declaring | IO covers read_file)
+//   Network <: IO (declaring | IO covers http_get)
+//   Env <: IO     (declaring | IO covers env_get)
+// ============================================================
+module Tests.StrictEffects
+
+// With effect subtype: | IO covers FileIO, Network, Env
+fn read_wrapper(path: String) -> String | IO {
+    let r = read_file(path)
+    result_unwrap_or(r, "missing")
+}
+
+// Without any annotation — permissive mode, any call allowed
+fn no_annotation(x: Int) -> Int {
+    x * 2
+}
+
+// Pure computation — no effects
+fn pure_add(a: Int, b: Int) -> Int {
+    a + b
+}
+
+fn main() -> Unit {
+    // Pure computation always works
+    assert_eq(pure_add(3, 4), 7, "pure add")
+    assert_eq(no_annotation(5), 10, "no annotation")
+
+    // Effect subtype: | IO covers FileIO — read a real file (the test itself)
+    let content = read_wrapper("tests/axon/23_strict_effects.axon")
+    assert(starts_with(content, "//"), "file content starts with comment")
+
+    print("PASS: strict_effects")
+}

@@ -1,0 +1,49 @@
+// ============================================================
+// Test: tool_call() — dispatch registered tools by name
+// ============================================================
+module Tests.ToolCall
+
+#[tool("Add two integers together")]
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}
+
+#[tool("Multiply two integers")]
+fn multiply(x: Int, y: Int) -> Int {
+    x * y
+}
+
+#[tool("Greet a person by name")]
+fn greet(name: String) -> String {
+    "Hello, {name}!"
+}
+
+fn main() -> Unit {
+    // ── tool_list returns registered tool names ────────────────
+    let tools = tool_list()
+    assert(list_contains(tools, "add"),      "add in tool_list")
+    assert(list_contains(tools, "multiply"), "multiply in tool_list")
+    assert(list_contains(tools, "greet"),    "greet in tool_list")
+
+    // ── tool_call dispatches by name with a Map of args ────────
+    let args_add = map_insert(map_insert(map_empty(), "a", 3), "b", 7)
+    let r1 = tool_call("add", args_add)
+    assert(result_is_ok(r1), "add call ok")
+    assert_eq(result_unwrap(r1), 10, "add result")
+
+    let args_mul = map_insert(map_insert(map_empty(), "x", 4), "y", 5)
+    let r2 = tool_call("multiply", args_mul)
+    assert(result_is_ok(r2), "multiply call ok")
+    assert_eq(result_unwrap(r2), 20, "multiply result")
+
+    let args_greet = map_insert(map_empty(), "name", "World")
+    let r3 = tool_call("greet", args_greet)
+    assert(result_is_ok(r3), "greet call ok")
+    assert_eq(result_unwrap(r3), "Hello, World!", "greet result")
+
+    // ── unknown tool returns Err ───────────────────────────────
+    let r4 = tool_call("nonexistent", map_empty())
+    assert(result_is_err(r4), "unknown tool is Err")
+
+    print("PASS: tool_call")
+}

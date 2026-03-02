@@ -70,6 +70,10 @@ function typesCompatible(expected: AxonType, actual: AxonType): boolean {
   switch (expected.kind) {
     case 'List':   return typesCompatible(expected.elem, (actual as typeof expected).elem);
     case 'Option': return typesCompatible(expected.inner, (actual as typeof expected).inner);
+    case 'Result': {
+      const a = actual as typeof expected;
+      return typesCompatible(expected.ok, a.ok) && typesCompatible(expected.err, a.err);
+    }
     case 'Named':  return expected.name === (actual as typeof expected).name;
     default:       return true;
   }
@@ -106,18 +110,37 @@ export class TypeChecker {
   private typeDecls:   Map<string, TypeDecl> = new Map();
   private agentDecls:  Map<string, AgentDecl> = new Map();
   private varCounter = 0;
+  // When true, wildcard `use` imports are present; undefined vars become warnings
+  private hasWildcardImports = false;
+  // Current function's declared effects (null = top-level / unchecked)
+  private currentEffects: Set<string> | null = null;
+  private currentFnName = '';
+  // When true, ALL functions are subject to effect checking (even unannotated ones)
+  private strictEffects = false;
 
   constructor() {
     this.typeEnv = new TypeEnv();
     this.registerBuiltins();
   }
 
-  check(program: Program): Diagnostic[] {
+  check(program: Program, opts?: { strictEffects?: boolean }): Diagnostic[] {
     this.diagnostics = [];
+    this.strictEffects = opts?.strictEffects ?? false;
 
-    // First pass: register all declarations
+    // First pass: register all declarations (UseDecl imports as Unknown)
     for (const item of program.items) {
-      this.registerDecl(item);
+      if (item.kind === 'UseDecl') {
+        // Register imported names as Unknown — the runtime will resolve them
+        if (item.items) {
+          for (const name of item.items) this.typeEnv.define(name, T_UNKNOWN);
+        } else {
+          // Wildcard import: can't know names statically; suppress undefined-var errors
+          this.hasWildcardImports = true;
+        }
+        // Wildcard or aliased imports: can't know names statically, skip
+      } else {
+        this.registerDecl(item);
+      }
     }
 
     // Second pass: type-check bodies
@@ -136,8 +159,10 @@ export class TypeChecker {
     this.typeEnv.define('int',      { kind: 'Fn', params: [T_UNKNOWN], ret: T_INT, effects: [] });
     this.typeEnv.define('float',    { kind: 'Fn', params: [T_UNKNOWN], ret: T_FLOAT, effects: [] });
     this.typeEnv.define('bool',     { kind: 'Fn', params: [T_UNKNOWN], ret: T_BOOL, effects: [] });
-    this.typeEnv.define('assert',   { kind: 'Fn', params: [T_BOOL, T_STRING], ret: T_UNIT, effects: [] });
-    this.typeEnv.define('panic',    { kind: 'Fn', params: [T_STRING], ret: { kind: 'Never' }, effects: [] });
+    this.typeEnv.define('assert',    { kind: 'Fn', params: [T_BOOL, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('assert_eq', { kind: 'Fn', params: [T_UNKNOWN, T_UNKNOWN, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('assert_ne', { kind: 'Fn', params: [T_UNKNOWN, T_UNKNOWN, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('panic',     { kind: 'Fn', params: [T_STRING], ret: { kind: 'Never' }, effects: [] });
     this.typeEnv.define('typeof',   T_UNKNOWN);
     this.typeEnv.define('dbg',      T_UNKNOWN);
 
@@ -147,104 +172,112 @@ export class TypeChecker {
     this.typeEnv.define('Ok',   T_UNKNOWN);
     this.typeEnv.define('Err',  T_UNKNOWN);
 
-    // List operations
-    const FN_UNKNOWN: AxonType = { kind: 'Fn', params: [T_UNKNOWN], ret: T_UNKNOWN, effects: [] };
-    this.typeEnv.define('len',          { kind: 'Fn', params: [T_UNKNOWN], ret: T_INT, effects: [] });
-    this.typeEnv.define('list_map',     T_UNKNOWN);
-    this.typeEnv.define('list_filter',  T_UNKNOWN);
-    this.typeEnv.define('list_fold',    T_UNKNOWN);
-    this.typeEnv.define('list_reduce',  T_UNKNOWN);
-    this.typeEnv.define('list_range',   { kind: 'Fn', params: [T_INT, T_INT], ret: { kind: 'List', elem: T_INT }, effects: [] });
-    this.typeEnv.define('list_len',     { kind: 'Fn', params: [T_UNKNOWN], ret: T_INT, effects: [] });
-    this.typeEnv.define('list_head',    T_UNKNOWN);
-    this.typeEnv.define('list_tail',    T_UNKNOWN);
-    this.typeEnv.define('list_last',    T_UNKNOWN);
-    this.typeEnv.define('list_drop',    T_UNKNOWN);
-    this.typeEnv.define('list_take',    T_UNKNOWN);
-    this.typeEnv.define('list_append',  T_UNKNOWN);
-    this.typeEnv.define('list_prepend', T_UNKNOWN);
-    this.typeEnv.define('list_concat',  T_UNKNOWN);
-    this.typeEnv.define('list_reverse', T_UNKNOWN);
-    this.typeEnv.define('list_sort',    T_UNKNOWN);
-    this.typeEnv.define('list_sum',     { kind: 'Fn', params: [T_UNKNOWN], ret: T_INT, effects: [] });
-    this.typeEnv.define('list_min',     T_UNKNOWN);
-    this.typeEnv.define('list_max',     T_UNKNOWN);
-    this.typeEnv.define('list_any',     T_UNKNOWN);
-    this.typeEnv.define('list_all',     T_UNKNOWN);
-    this.typeEnv.define('list_find',    T_UNKNOWN);
-    this.typeEnv.define('list_index',   T_UNKNOWN);
-    this.typeEnv.define('list_zip',     T_UNKNOWN);
-    this.typeEnv.define('list_flat_map',T_UNKNOWN);
-    this.typeEnv.define('list_unique',  T_UNKNOWN);
-    this.typeEnv.define('list_group_by',T_UNKNOWN);
-    this.typeEnv.define('list_chunk',   T_UNKNOWN);
-    this.typeEnv.define('list_flatten', T_UNKNOWN);
-    this.typeEnv.define('list_contains',T_UNKNOWN);
-    this.typeEnv.define('list_join',    T_UNKNOWN);
+    // Batch-register all unknowns: avoids false "undefined variable" errors for stdlib
+    const U = T_UNKNOWN;
+    const allUnknowns = [
+      // List operations (complete)
+      'len', 'list_len', 'list_is_empty', 'list_head', 'list_tail', 'list_last',
+      'list_get', 'list_take', 'list_drop', 'list_from', 'list_prepend', 'list_append',
+      'list_concat', 'list_reverse', 'list_contains', 'list_sum', 'list_zip', 'list_flatten',
+      'list_unique', 'list_enumerate', 'list_range', 'list_range_inclusive', 'list_sort',
+      'list_any', 'list_all', 'list_find', 'list_map', 'list_filter', 'list_fold',
+      'list_reduce', 'list_flat_map', 'list_zip', 'list_group_by', 'list_chunk',
+      // String operations (complete)
+      'upper', 'lower', 'trim', 'trim_start', 'trim_end', 'split', 'join',
+      'contains', 'starts_with', 'ends_with', 'replace', 'slice', 'char_at',
+      'chars', 'bytes', 'parse_int', 'parse_float', 'format', 'repeat',
+      'pad_left', 'pad_right', 'index_of', 'lines',
+      // Option operations
+      'option_is_some', 'option_is_none', 'option_unwrap', 'option_unwrap_or',
+      'option_ok_or', 'option_map', 'option_and_then',
+      // Result operations
+      'result_is_ok', 'result_is_err', 'result_unwrap', 'result_unwrap_or',
+      'result_unwrap_err', 'result_map', 'result_map_err', 'result_and_then',
+      // Map operations (complete)
+      'map_empty', 'map_new', 'map_get', 'map_insert', 'map_remove', 'map_has',
+      'map_len', 'map_is_empty', 'map_keys', 'map_values', 'map_entries',
+      // Math (complete)
+      'sqrt', 'pow', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'clamp',
+      'log', 'log2', 'exp', 'sin', 'cos', 'tan',
+      // Tuple operations
+      'tuple_get', 'tuple_len',
+      // Compare / random / misc
+      'compare', 'min_val', 'max_val', 'random', 'random_int', 'random_bool',
+      'now_ms', 'now_s', 'timestamp', 'sleep', 'uuid',
+      'read_file', 'write_file', 'file_exists',
+      'type_of', 'exit',
+      // Conversions
+      'str', 'int', 'float', 'bool', 'string', 'char', 'debug', 'repr',
+      // JSON (pure — no effects)
+      'json_parse', 'json_stringify', 'json_stringify_pretty', 'json_get',
+    ];
+    for (const name of allUnknowns) this.typeEnv.define(name, U);
 
-    // String operations
-    this.typeEnv.define('upper',       { kind: 'Fn', params: [T_STRING], ret: T_STRING, effects: [] });
-    this.typeEnv.define('lower',       { kind: 'Fn', params: [T_STRING], ret: T_STRING, effects: [] });
-    this.typeEnv.define('trim',        { kind: 'Fn', params: [T_STRING], ret: T_STRING, effects: [] });
-    this.typeEnv.define('split',       T_UNKNOWN);
-    this.typeEnv.define('join',        T_UNKNOWN);
-    this.typeEnv.define('contains',    T_UNKNOWN);
-    this.typeEnv.define('starts_with', T_UNKNOWN);
-    this.typeEnv.define('ends_with',   T_UNKNOWN);
-    this.typeEnv.define('replace',     T_UNKNOWN);
-    this.typeEnv.define('slice',       T_UNKNOWN);
-    this.typeEnv.define('char_at',     T_UNKNOWN);
-    this.typeEnv.define('parse_int',   T_UNKNOWN);
-    this.typeEnv.define('parse_float', T_UNKNOWN);
-    this.typeEnv.define('format',      T_UNKNOWN);
-    this.typeEnv.define('repeat',      T_UNKNOWN);
-    this.typeEnv.define('pad_left',    T_UNKNOWN);
-    this.typeEnv.define('pad_right',   T_UNKNOWN);
-    this.typeEnv.define('index_of',    T_UNKNOWN);
-    this.typeEnv.define('chars',       T_UNKNOWN);
-    this.typeEnv.define('bytes',       T_UNKNOWN);
+    // Override a few with more specific types for better checking
+    this.typeEnv.define('print',    { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
+    this.typeEnv.define('println',  { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
+    this.typeEnv.define('eprint',   { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
+    this.typeEnv.define('assert',   { kind: 'Fn', params: [T_BOOL, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('assert_eq',{ kind: 'Fn', params: [U, U, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('assert_ne',{ kind: 'Fn', params: [U, U, T_STRING], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('panic',    { kind: 'Fn', params: [T_STRING], ret: { kind: 'Never' }, effects: [] });
+    this.typeEnv.define('len',      { kind: 'Fn', params: [U], ret: T_INT, effects: [] });
+    this.typeEnv.define('list_len', { kind: 'Fn', params: [U], ret: T_INT, effects: [] });
+    this.typeEnv.define('list_range', { kind: 'Fn', params: [T_INT, T_INT], ret: { kind: 'List', elem: T_INT }, effects: [] });
+    this.typeEnv.define('list_sum', { kind: 'Fn', params: [U], ret: T_INT, effects: [] });
 
-    // Math operations
-    this.typeEnv.define('sqrt',  { kind: 'Fn', params: [T_FLOAT], ret: T_FLOAT, effects: [] });
-    this.typeEnv.define('pow',   { kind: 'Fn', params: [T_FLOAT, T_FLOAT], ret: T_FLOAT, effects: [] });
-    this.typeEnv.define('abs',   T_UNKNOWN);
-    this.typeEnv.define('floor', { kind: 'Fn', params: [T_FLOAT], ret: T_INT, effects: [] });
-    this.typeEnv.define('ceil',  { kind: 'Fn', params: [T_FLOAT], ret: T_INT, effects: [] });
-    this.typeEnv.define('round', { kind: 'Fn', params: [T_FLOAT], ret: T_INT, effects: [] });
-    this.typeEnv.define('min',   T_UNKNOWN);
-    this.typeEnv.define('max',   T_UNKNOWN);
-    this.typeEnv.define('clamp', T_UNKNOWN);
-    this.typeEnv.define('log',   T_UNKNOWN);
-    this.typeEnv.define('exp',   T_UNKNOWN);
-    this.typeEnv.define('sin',   T_UNKNOWN);
-    this.typeEnv.define('cos',   T_UNKNOWN);
-    this.typeEnv.define('tan',   T_UNKNOWN);
-    this.typeEnv.define('pi',    T_FLOAT);
-    this.typeEnv.define('nan',   T_FLOAT);
+    // IO-annotated stdlib functions (used for effect checking)
+    const fnIO    = (n: number) => ({ kind: 'Fn' as const, params: Array(n).fill(U), ret: U, effects: ['IO'] });
+    const fnNet   = (n: number) => ({ kind: 'Fn' as const, params: Array(n).fill(U), ret: U, effects: ['IO', 'Network'] });
+    const fnLLM   = (n: number) => ({ kind: 'Fn' as const, params: Array(n).fill(U), ret: U, effects: ['IO', 'Network', 'LLM'] });
+    const fnFile  = (n: number) => ({ kind: 'Fn' as const, params: Array(n).fill(U), ret: U, effects: ['IO', 'FileIO'] });
+    const fnEnvFx = (n: number) => ({ kind: 'Fn' as const, params: Array(n).fill(U), ret: U, effects: ['IO', 'Env'] });
+    this.typeEnv.define('read_file',           fnFile(1));
+    this.typeEnv.define('write_file',          fnFile(2));
+    this.typeEnv.define('file_exists',         fnFile(1));
+    this.typeEnv.define('http_get',            fnNet(1));
+    this.typeEnv.define('http_post',           fnNet(3));
+    this.typeEnv.define('http_get_json',       fnNet(1));
+    this.typeEnv.define('env_get',             fnEnvFx(1));
+    this.typeEnv.define('env_set',             fnEnvFx(2));
+    this.typeEnv.define('env_all',             fnEnvFx(0));
+    this.typeEnv.define('args',                fnEnvFx(0));
+    this.typeEnv.define('llm_call',            fnLLM(2));
+    this.typeEnv.define('now_ms',              fnIO(0));
+    this.typeEnv.define('now_s',               fnIO(0));
+    this.typeEnv.define('timestamp',           fnIO(0));
+    this.typeEnv.define('random',              { kind: 'Fn', params: [], ret: T_FLOAT, effects: ['Random'] });
+    this.typeEnv.define('random_int',          { kind: 'Fn', params: [T_INT, T_INT], ret: T_INT, effects: ['Random'] });
+    this.typeEnv.define('random_bool',         { kind: 'Fn', params: [], ret: T_BOOL, effects: ['Random'] });
+    // tool_ functions
+    this.typeEnv.define('tool_list',           U);
+    this.typeEnv.define('tool_schema',         U);
+    this.typeEnv.define('tool_call',           { kind: 'Fn', params: [U, U], ret: U, effects: ['IO'] });
+    this.typeEnv.define('llm_call_with_tools', fnLLM(2));
+    this.typeEnv.define('llm_structured',      fnLLM(2));
+    this.typeEnv.define('agent_tool_loop',     fnLLM(3));
+    // Multi-agent orchestration
+    this.typeEnv.define('ask_all',             { kind: 'Fn', params: [U, U], ret: { kind: 'List', elem: U }, effects: [] });
+    this.typeEnv.define('ask_any',             { kind: 'Fn', params: [U, U], ret: U, effects: [] });
 
-    // Map operations
-    this.typeEnv.define('map_empty',   T_UNKNOWN);
-    this.typeEnv.define('map_get',     T_UNKNOWN);
-    this.typeEnv.define('map_insert',  T_UNKNOWN);
-    this.typeEnv.define('map_remove',  T_UNKNOWN);
-    this.typeEnv.define('map_has',     T_UNKNOWN);
-    this.typeEnv.define('map_keys',    T_UNKNOWN);
-    this.typeEnv.define('map_values',  T_UNKNOWN);
-    this.typeEnv.define('map_entries', T_UNKNOWN);
-    this.typeEnv.define('map_size',    T_UNKNOWN);
-    this.typeEnv.define('map_map',     T_UNKNOWN);
-    this.typeEnv.define('map_filter',  T_UNKNOWN);
-    this.typeEnv.define('map_merge',   T_UNKNOWN);
+    // Constants
+    this.typeEnv.define('PI',       T_FLOAT);
+    this.typeEnv.define('E',        T_FLOAT);
+    this.typeEnv.define('MAX_INT',  T_INT);
+    this.typeEnv.define('MIN_INT',  T_INT);
+    this.typeEnv.define('true',     T_BOOL);
+    this.typeEnv.define('false',    T_BOOL);
+    this.typeEnv.define('unit',     T_UNIT);
 
-    // IO / Time / Util
-    this.typeEnv.define('now',         T_UNKNOWN);
-    this.typeEnv.define('rand',        T_UNKNOWN);
-    this.typeEnv.define('rand_int',    T_UNKNOWN);
-    this.typeEnv.define('read_file',   T_UNKNOWN);
-    this.typeEnv.define('write_file',  T_UNKNOWN);
-    this.typeEnv.define('sleep',       T_UNKNOWN);
-    this.typeEnv.define('env_get',     T_UNKNOWN);
-    this.typeEnv.define('exit',        T_UNKNOWN);
+    // Option/Result constructors
+    this.typeEnv.define('Some', U);
+    this.typeEnv.define('None', { kind: 'Option', inner: U });
+    this.typeEnv.define('Ok',   U);
+    this.typeEnv.define('Err',  U);
+
+    // typeof / dbg
+    this.typeEnv.define('type_of', U);
+    this.typeEnv.define('dbg',     U);
   }
 
   private registerDecl(item: TopLevel): void {
@@ -301,8 +334,21 @@ export class TypeChecker {
       fnEnv.define(p.name, p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
     }
 
+    // Effect enforcement: for explicit-annotated fns, or ALL fns in strict mode
+    const savedEffects = this.currentEffects;
+    const savedFnName  = this.currentFnName;
+    if (decl.effectsExplicit || this.strictEffects) {
+      this.currentEffects = new Set(decl.effects);
+      this.currentFnName  = decl.name;
+    } else {
+      this.currentEffects = null;
+    }
+
     const expectedRet = decl.retTy ? this.resolveType(decl.retTy) : T_UNKNOWN;
     const actualRet   = this.checkExpr(decl.body, fnEnv);
+
+    this.currentEffects = savedEffects;
+    this.currentFnName  = savedFnName;
 
     if (!typesCompatible(expectedRet, actualRet)) {
       this.error(
@@ -327,8 +373,21 @@ export class TypeChecker {
       for (const p of handler.params) {
         handlerEnv.define(p.name, p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
       }
+
+      const savedEffects = this.currentEffects;
+      const savedFnName  = this.currentFnName;
+      if (handler.effectsExplicit || this.strictEffects) {
+        this.currentEffects = new Set(handler.effects);
+        this.currentFnName  = `${decl.name}.${handler.msgType}`;
+      } else {
+        this.currentEffects = null;
+      }
+
       const expectedRet = handler.retTy ? this.resolveType(handler.retTy) : T_UNKNOWN;
       const actualRet   = this.checkExpr(handler.body, handlerEnv);
+
+      this.currentEffects = savedEffects;
+      this.currentFnName  = savedFnName;
 
       if (!typesCompatible(expectedRet, actualRet)) {
         this.error(
@@ -352,7 +411,11 @@ export class TypeChecker {
       case 'Ident': {
         const ty = env.get(expr.name);
         if (ty === undefined) {
-          this.error(`Undefined variable: '${expr.name}'`, expr.span);
+          if (this.hasWildcardImports) {
+            // Could be a wildcard-imported name; suppress error
+          } else {
+            this.error(`Undefined variable: '${expr.name}'`, expr.span);
+          }
           return T_UNKNOWN;
         }
         return ty;
@@ -411,6 +474,19 @@ export class TypeChecker {
             if (!isNumeric(leftTy) && leftTy.kind !== 'String' && leftTy.kind !== 'Unknown') {
               this.error(`Operator '${expr.op}' requires numeric or string type, got ${typeToString(leftTy)}`, expr.span);
             }
+            // Catch mixed Int+String / String+Int etc.
+            if (leftTy.kind !== 'Unknown' && rightTy.kind !== 'Unknown') {
+              const leftNum  = isNumeric(leftTy);
+              const rightNum = isNumeric(rightTy);
+              const leftStr  = leftTy.kind  === 'String';
+              const rightStr = rightTy.kind === 'String';
+              if ((leftNum && rightStr) || (leftStr && rightNum)) {
+                this.error(
+                  `Type mismatch: cannot apply '${expr.op}' to ${typeToString(leftTy)} and ${typeToString(rightTy)}`,
+                  expr.span
+                );
+              }
+            }
             return leftTy.kind === 'String' ? T_STRING : (isFloat(leftTy) || isFloat(rightTy)) ? T_FLOAT : leftTy;
 
           case '==': case '!=': return T_BOOL;
@@ -442,6 +518,20 @@ export class TypeChecker {
         for (const arg of expr.args) this.checkExpr(arg.value, env);
 
         if (calleeTy.kind === 'Fn') {
+          // Effect enforcement: only when current function has explicit effect annotation (or --strict-effects)
+          if (this.currentEffects !== null && calleeTy.effects.length > 0) {
+            for (const fx of calleeTy.effects) {
+              if (!this.effectSubsumedBy(fx, this.currentEffects)) {
+                const calleeName = expr.callee.kind === 'Ident' ? expr.callee.name : '<expr>';
+                const hint = this.effectHint(fx);
+                this.error(
+                  `Effect '${fx}' from calling '${calleeName}' is not declared in function '${this.currentFnName}'. ` +
+                  `Add '| ${fx}' to the function signature.${hint}`,
+                  expr.span
+                );
+              }
+            }
+          }
           // Check arg count
           if (expr.args.length > calleeTy.params.length) {
             this.warn(`Too many arguments: expected ${calleeTy.params.length}, got ${expr.args.length}`, expr.span);
@@ -475,7 +565,29 @@ export class TypeChecker {
       case 'MethodCall': {
         const objTy = this.checkExpr(expr.obj, env);
         for (const arg of expr.args) this.checkExpr(arg.value, env);
-        return T_UNKNOWN; // Simplified: skip method type resolution
+        // Common method return types
+        switch (expr.method) {
+          case 'len':        return T_INT;
+          case 'is_empty':   return T_BOOL;
+          case 'contains':   return T_BOOL;
+          case 'starts_with':
+          case 'ends_with':  return T_BOOL;
+          case 'upper':
+          case 'lower':
+          case 'trim':
+          case 'trim_start':
+          case 'trim_end':
+          case 'replace':
+          case 'repeat':     return T_STRING;
+          case 'split':      return { kind: 'List', elem: T_STRING };
+          case 'chars':      return { kind: 'List', elem: { kind: 'Char' } };
+          case 'lines':      return { kind: 'List', elem: T_STRING };
+          case 'map':        return { kind: 'List', elem: T_UNKNOWN };
+          case 'filter':     return { kind: 'List', elem: T_UNKNOWN };
+          case 'send':
+          case 'ask':        return T_UNKNOWN;
+          default:           return T_UNKNOWN;
+        }
       }
 
       case 'FieldAccess': {
@@ -500,7 +612,11 @@ export class TypeChecker {
       }
 
       case 'EnumVariant': {
-        return { kind: 'Named', name: expr.typeName || expr.variant, args: [] };
+        // Map well-known constructors to proper structural types
+        const v = expr.variant;
+        if (v === 'None' || v === 'Some') return { kind: 'Option', inner: T_UNKNOWN };
+        if (v === 'Ok'   || v === 'Err')  return { kind: 'Result', ok: T_UNKNOWN, err: T_UNKNOWN };
+        return { kind: 'Named', name: expr.typeName || v, args: [] };
       }
 
       case 'Record': {
@@ -509,9 +625,10 @@ export class TypeChecker {
       }
 
       case 'Pipe': {
-        const leftTy = this.checkExpr(expr.left, env);
-        this.checkExpr(expr.right, env);
-        return T_UNKNOWN;
+        this.checkExpr(expr.left, env);
+        const rightTy = this.checkExpr(expr.right, env);
+        // If the right side is a known function, return its return type
+        return rightTy.kind === 'Fn' ? rightTy.ret : T_UNKNOWN;
       }
 
       case 'Await':    return this.checkExpr(expr.expr, env);
@@ -519,7 +636,13 @@ export class TypeChecker {
       case 'Return':   { if (expr.value) this.checkExpr(expr.value, env); return { kind: 'Never' }; }
       case 'Break':    { if (expr.value) this.checkExpr(expr.value, env); return { kind: 'Never' }; }
       case 'Continue': return { kind: 'Never' };
-      case 'Index':    { this.checkExpr(expr.obj, env); this.checkExpr(expr.index, env); return T_UNKNOWN; }
+      case 'Index': {
+        const objTy2 = this.checkExpr(expr.obj, env);
+        this.checkExpr(expr.index, env);
+        if (objTy2.kind === 'List')   return objTy2.elem;
+        if (objTy2.kind === 'String') return { kind: 'Char' };
+        return T_UNKNOWN;
+      }
       case 'Unary':    return this.checkExpr(expr.expr, env);
 
       case 'TypeAscription': {
@@ -544,11 +667,15 @@ export class TypeChecker {
   private checkStmt(stmt: Stmt, env: TypeEnv): void {
     switch (stmt.kind) {
       case 'LetStmt': {
+        // Pre-register as Unknown to support recursive lambdas (local fn)
+        if (stmt.init.kind === 'Lambda') this.checkPatternBinding(stmt.pat, T_UNKNOWN, env);
         const ty = this.checkExpr(stmt.init, env);
         this.checkPatternBinding(stmt.pat, ty, env);
         break;
       }
       case 'LetMutStmt': {
+        // Pre-register as Unknown to support recursive lambdas
+        if (stmt.init.kind === 'Lambda') env.define(stmt.name, T_UNKNOWN);
         const ty = this.checkExpr(stmt.init, env);
         env.define(stmt.name, ty);
         break;
@@ -654,6 +781,31 @@ export class TypeChecker {
   private warn(msg: string, span: { line: number; col: number }): void {
     this.diagnostics.push({ level: 'warning', message: msg, line: span.line, col: span.col });
   }
+
+  // Effect subtype hierarchy: FileIO, Network, Env, LLM are all sub-effects of IO.
+  // If the declared set contains a parent effect, the specific effect is covered.
+  private effectSubsumedBy(specific: string, declared: Set<string>): boolean {
+    if (declared.has(specific)) return true;
+    const parents: Record<string, string[]> = {
+      'FileIO':  ['IO'],
+      'Network': ['IO'],
+      'Env':     ['IO'],
+      'LLM':     ['IO', 'Network'],
+    };
+    return (parents[specific] ?? []).some(p => declared.has(p));
+  }
+
+  private effectHint(fx: string): string {
+    const hints: Record<string, string> = {
+      'IO':      ' (general IO effect)',
+      'FileIO':  ' (or declare | IO to cover all IO effects)',
+      'Network': ' (or declare | IO to cover all IO effects)',
+      'LLM':     ' (or declare | IO, Network)',
+      'Env':     ' (or declare | IO to cover all IO effects)',
+      'Random':  ' (non-deterministic randomness effect)',
+    };
+    return hints[fx] ?? '';
+  }
 }
 
 function isNumeric(t: AxonType): boolean {
@@ -663,6 +815,6 @@ function isFloat(t: AxonType): boolean {
   return t.kind === 'Float';
 }
 
-export function typeCheck(program: Program): Diagnostic[] {
-  return new TypeChecker().check(program);
+export function typeCheck(program: Program, opts?: { strictEffects?: boolean }): Diagnostic[] {
+  return new TypeChecker().check(program, opts);
 }

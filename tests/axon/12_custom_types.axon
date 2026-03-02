@@ -1,0 +1,143 @@
+// ============================================================
+// Test: Custom types — enum ADTs, record types, pattern match
+// ============================================================
+module Tests.CustomTypes
+
+// ── Enum with variants ───────────────────────────────────────
+type Shape {
+    Circle(Float)
+    Rect(Float, Float)
+    Triangle(Float, Float, Float)
+    Point
+}
+
+fn area(s: Shape) -> Float {
+    match s {
+        Circle(r)       => PI * r * r
+        Rect(w, h)      => w * h
+        Triangle(a, b, c) => {
+            let sp = (a + b + c) / 2.0
+            sqrt(sp * (sp - a) * (sp - b) * (sp - c))
+        }
+        Point => 0.0
+    }
+}
+
+fn describe(s: Shape) -> String {
+    match s {
+        Circle(r)    => "circle r={r}"
+        Rect(w, h)   => "rect {w}x{h}"
+        Triangle(_, _, _) => "triangle"
+        Point        => "point"
+    }
+}
+
+// ── Recursive enum (linked list) ─────────────────────────────
+type IntList {
+    Nil
+    Cons(Int, IntList)
+}
+
+fn ilist_len(lst: IntList) -> Int {
+    match lst {
+        Nil          => 0
+        Cons(_, rest) => 1 + ilist_len(rest)
+    }
+}
+
+fn ilist_sum(lst: IntList) -> Int {
+    match lst {
+        Nil           => 0
+        Cons(h, rest) => h + ilist_sum(rest)
+    }
+}
+
+fn ilist_of(items: List<Int>) -> IntList {
+    match items {
+        []        => Nil
+        [h, ..t]  => Cons(h, ilist_of(t))
+    }
+}
+
+// ── Tree ─────────────────────────────────────────────────────
+type Tree {
+    Leaf
+    Node(Int, Tree, Tree)
+}
+
+fn tree_insert(t: Tree, n: Int) -> Tree {
+    match t {
+        Leaf              => Node(n, Leaf, Leaf)
+        Node(v, l, r) => {
+            if n < v {
+                Node(v, tree_insert(l, n), r)
+            } else if n > v {
+                Node(v, l, tree_insert(r, n))
+            } else {
+                t
+            }
+        }
+    }
+}
+
+fn tree_contains(t: Tree, n: Int) -> Bool {
+    match t {
+        Leaf              => false
+        Node(v, l, r) => {
+            if n == v       { true }
+            else if n < v   { tree_contains(l, n) }
+            else            { tree_contains(r, n) }
+        }
+    }
+}
+
+fn tree_height(t: Tree) -> Int {
+    match t {
+        Leaf              => 0
+        Node(_, l, r) => 1 + max(tree_height(l), tree_height(r))
+    }
+}
+
+fn main() -> Unit {
+    // ── Shape tests ──────────────────────────────────────────
+    let c = Circle(5.0)
+    let r = Rect(3.0, 4.0)
+    let p = Point
+
+    assert(area(c) > 78.0 && area(c) < 79.0, "circle area ~78.54")
+    assert(area(r) == 12.0,                   "rect area 12")
+    assert(area(p) == 0.0,                    "point area 0")
+
+    assert(describe(c) == "circle r=5.0",         "describe circle")
+    assert(describe(r) == "rect 3.0x4.0",        "describe rect")
+    assert(describe(Point) == "point",           "describe point")
+
+    // ── Pattern matching exhaustion & guards ─────────────────
+    let shapes = [Circle(1.0), Rect(2.0, 3.0), Point, Circle(4.0)]
+    let big    = list_filter(shapes, |s| area(s) > 5.0)
+    assert(list_len(big) == 2, "2 big shapes")
+
+    // ── IntList tests ─────────────────────────────────────────
+    let lst = ilist_of([1, 2, 3, 4, 5])
+    assert(ilist_len(lst) == 5, "list len 5")
+    assert(ilist_sum(lst) == 15, "list sum 15")
+
+    let empty_list = ilist_of([])
+    assert(ilist_len(empty_list) == 0, "empty list len 0")
+    assert(ilist_sum(empty_list) == 0, "empty list sum 0")
+
+    // ── BST tests ────────────────────────────────────────────
+    let nums = [5, 3, 7, 1, 4, 6, 8, 2]
+    let bst  = list_fold(nums, Leaf, |t, n| tree_insert(t, n))
+
+    assert(tree_contains(bst, 5), "bst has 5")
+    assert(tree_contains(bst, 1), "bst has 1")
+    assert(tree_contains(bst, 8), "bst has 8")
+    assert(!tree_contains(bst, 9), "bst no 9")
+    assert(!tree_contains(bst, 0), "bst no 0")
+
+    let h = tree_height(bst)
+    assert(h >= 3 && h <= 8, "reasonable tree height")
+
+    print("PASS: custom_types")
+}

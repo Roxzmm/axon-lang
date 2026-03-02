@@ -1,0 +1,38 @@
+// ============================================================
+// Library: Math utilities
+// ============================================================
+module Lib.MathUtils
+
+pub fn gcd(a: Int, b: Int) -> Int {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+pub fn lcm(a: Int, b: Int) -> Int {
+    (a * b) / gcd(a, b)
+}
+
+pub fn is_prime(n: Int) -> Bool {
+    if n < 2 { false }
+    else if n == 2 { true }
+    else if n % 2 == 0 { false }
+    else {
+        let limit = int(sqrt(float(n))) + 1
+        let divisors = list_filter(
+            list_range(3, limit),
+            |i| i % 2 == 1
+        )
+        !list_any(divisors, |i| n % i == 0)
+    }
+}
+
+pub fn primes_up_to(n: Int) -> List<Int> {
+    list_filter(list_range(2, n + 1), is_prime)
+}
+
+pub fn factorial(n: Int) -> Int {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+pub fn fib(n: Int) -> Int {
+    if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
+}
