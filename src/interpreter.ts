@@ -686,7 +686,9 @@ export class Interpreter {
       case 'IntLit':    return mkInt(expr.value);
       case 'FloatLit':  return mkFloat(expr.value);
       case 'BoolLit':   return mkBool(expr.value);
-      case 'StringLit': return this.evalStringLit(expr.value, env);
+      case 'StringLit': return expr.interpolated
+        ? this.evalStringLit(expr.value, env)
+        : mkString(expr.value);
       case 'CharLit':   return { tag: ValueTag.Char, value: expr.value };
       case 'UnitLit':   return UNIT;
 

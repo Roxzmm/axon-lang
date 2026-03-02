@@ -92,7 +92,7 @@ export class Parser {
           if (tok.kind === TokenKind.LParen) depth++;
           if (tok.kind === TokenKind.RParen) { depth--; if (depth === 0) break; }
           // For string tokens, reconstruct with quotes
-          if (tok.kind === TokenKind.StringLit) {
+          if (tok.kind === TokenKind.StringLit || tok.kind === TokenKind.InterpolatedStringLit) {
             argParts.push(`"${tok.value}"`);
           } else {
             argParts.push(tok.value);
@@ -750,7 +750,11 @@ export class Parser {
     }
     if (tok.kind === TokenKind.StringLit) {
       this.advance();
-      return { kind: 'StringLit', value: tok.value, span };
+      return { kind: 'StringLit', value: tok.value, interpolated: false, span };
+    }
+    if (tok.kind === TokenKind.InterpolatedStringLit) {
+      this.advance();
+      return { kind: 'StringLit', value: tok.value, interpolated: true, span };
     }
     if (tok.kind === TokenKind.CharLit) {
       this.advance();
@@ -1111,9 +1115,9 @@ export class Parser {
       this.advance();
       return { kind: 'LitPat', value: { kind: 'BoolLit', value: tok.value === 'true', span }, span };
     }
-    if (tok.kind === TokenKind.StringLit) {
+    if (tok.kind === TokenKind.StringLit || tok.kind === TokenKind.InterpolatedStringLit) {
       this.advance();
-      return { kind: 'LitPat', value: { kind: 'StringLit', value: tok.value, span }, span };
+      return { kind: 'LitPat', value: { kind: 'StringLit', value: tok.value, interpolated: tok.kind === TokenKind.InterpolatedStringLit, span }, span };
     }
     if (tok.kind === TokenKind.KwNone) {
       this.advance();

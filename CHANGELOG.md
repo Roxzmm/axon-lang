@@ -9,6 +9,17 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.1] - 2026-03-02
+
+### Interpreter
+- Implemented `$"..."` string interpolation syntax in the lexer — breaking change that brings the interpreter in sync with the spec
+  - `$"Hello, {name}!"` → interpolated string (expr inside `{...}` evaluated)
+  - `"Hello, {name}!"` → plain literal string (`{` is literal text)
+- Updated all 25 tests and examples to use `$"..."` where interpolation is required
+- Removed "Known Limitation #1" from README — interpolation is now spec-compliant
+
+---
+
 ## [0.2.0] - 2026-03-02
 
 ### Language & Spec

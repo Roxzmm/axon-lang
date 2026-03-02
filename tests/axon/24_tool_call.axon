@@ -15,7 +15,7 @@ fn multiply(x: Int, y: Int) -> Int {
 
 #[tool("Greet a person by name")]
 fn greet(name: String) -> String {
-    "Hello, {name}!"
+    $"Hello, {name}!"
 }
 
 fn main() -> Unit {

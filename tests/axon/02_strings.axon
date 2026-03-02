@@ -60,9 +60,9 @@ fn main() -> Unit {
     // ── Interpolation ───────────────────────────────────────
     let name = "Axon"
     let n    = 42
-    assert("Hello, {name}!" == "Hello, Axon!",  "string interpolation")
-    assert("n = {n}" == "n = 42",               "number interpolation")
-    assert("{1 + 1}" == "2",                    "expression interpolation")
+    assert($"Hello, {name}!" == "Hello, Axon!",  "string interpolation")
+    assert($"n = {n}" == "n = 42",               "number interpolation")
+    assert($"{1 + 1}" == "2",                    "expression interpolation")
 
     // ── Parse ───────────────────────────────────────────────
     let pi_r = parse_float("3.14")

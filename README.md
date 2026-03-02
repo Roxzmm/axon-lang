@@ -309,27 +309,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 
 These are honest descriptions of current limitations, and why they exist.
 
-### 1. `$"..."` Interpolation Not Yet in Interpreter
-
-The spec defines `$"Hello {name}"` as the string interpolation syntax (C#-style `$` prefix). Regular strings `"..."` have no interpolation — `{` is a literal character.
-
-The current interpreter prototype still uses the old syntax: any `"..."` string treats `{` as the start of an interpolation expression.
-
-```axon
-// Spec (target):    $"Hello, {name}!"   — interpolated
-//                   "Hello, {name}!"    — literal text, no interpolation
-
-// Current interpreter behavior:
-// "Hello, {name}!"  — still interpolated (old behavior)
-```
-
-**Why**: Breaking change that requires updating the lexer. Straightforward to implement — it's next on the lexer task list.
-
-**Status**: The examples in `examples/` use the old syntax and pass all 25 tests. They will be updated when the interpreter implements `$"..."`.
-
-**Workaround**: None needed for current code. For new spec-compliant code, use `$"..."` — the interpreter upgrade will make it work.
-
-### 2. Hot Reload is File-Restart, Not True Live Patch
+### 1. Hot Reload is File-Restart, Not True Live Patch
 
 `axon run --watch` re-executes the entire program on file change. This works for stateless scripts but loses agent state.
 
@@ -418,9 +398,8 @@ See [NEXT_PHASE_PLAN_V2.md](NEXT_PHASE_PLAN_V2.md) for the full plan. Current pr
 
 1. **Generics** — `List<T>`, `Option<T>`, `Result<T, E>` with real type parameters
 2. **True hot reload** — Supervisor model: patch running agent handlers, no restart, no state loss
-3. **`$"..."` interpolation** — implement the new interpolation syntax in the lexer, update all examples
-4. **OS-thread agents** — `worker_threads` backend for true parallelism
-5. **`#[Application]` in interpreter** — `axon run` recognizes `#[Application]` as entry point
+3. **OS-thread agents** — `worker_threads` backend for true parallelism
+4. **`#[Application]` in interpreter** — `axon run` recognizes `#[Application]` as entry point
 
 ---
 

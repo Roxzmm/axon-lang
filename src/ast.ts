@@ -35,7 +35,7 @@ export type LitExpr =
   | { kind: 'IntLit';    value: bigint; span: Span }
   | { kind: 'FloatLit';  value: number; span: Span }
   | { kind: 'BoolLit';   value: boolean; span: Span }
-  | { kind: 'StringLit'; value: string; span: Span }    // may contain {interpolation}
+  | { kind: 'StringLit'; value: string; interpolated: boolean; span: Span }
   | { kind: 'CharLit';   value: string; span: Span }
   | { kind: 'UnitLit';   span: Span }
 

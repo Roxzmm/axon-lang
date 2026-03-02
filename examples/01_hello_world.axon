@@ -30,9 +30,9 @@ fn bindingExamples() -> Unit | IO {
     let inferred         = "inferred type"   // 也是 String
 
     // 字符串插值
-    print("Hello, {name}!")                  // "Hello, World!"
-    print("Counter: {counter}")              // "Counter: 2"
-    print("Pi is approximately {pi:.4}")     // "Pi is approximately 3.1416"
+    print($"Hello, {name}!")                  // "Hello, World!"
+    print($"Counter: {counter}")              // "Counter: 2"
+    print($"Pi is approximately {pi:.4}")     // "Pi is approximately 3.1416"
 
     // 块表达式（块的最后一个表达式是值）
     let result = {
@@ -40,7 +40,7 @@ fn bindingExamples() -> Unit | IO {
         let y = 20
         x + y   // result = 30
     }
-    print("Result: {result}")
+    print($"Result: {result}")
 }
 
 // ============================================================
@@ -70,7 +70,7 @@ fn typeExamples() -> Unit | IO {
 
     // 字符串
     let s1 = "Hello"
-    let s2 = "Hello, {ch1}!"
+    let s2 = $"Hello, {ch1}!"
     let s3 = r"Raw \n string"    // 原始字符串，\n 不转义
     let s4 = """
         多行
@@ -98,14 +98,14 @@ fn countDown() -> Unit | IO {
     // while 循环
     let mut i = 10
     while i > 0 {
-        print("{i}...")
+        print($"{i}...")
         i -= 1
     }
     print("Go!")
 
     // for 循环
     for n in 1..=5 {
-        print("Square of {n} is {n * n}")
+        print($"Square of {n} is {n * n}")
     }
 
     // loop（无限循环，用 break 返回值）
@@ -114,7 +114,7 @@ fn countDown() -> Unit | IO {
         if x > 0 { break x }
         print("Please enter a positive number")
     }
-    print("Found: {found}")
+    print($"Found: {found}")
 }
 
 // ============================================================
@@ -131,7 +131,7 @@ fn square(n: Int) -> Int = n * n
 
 // 默认参数
 fn greet(name: String, greeting: String = "Hello") -> String {
-    "{greeting}, {name}!"
+    $"{greeting}, {name}!"
 }
 
 // 递归（自动尾调用优化）

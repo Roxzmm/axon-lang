@@ -28,7 +28,7 @@ agent Worker {
 
     on TryWork -> String {
         attempts = attempts + 1
-        "attempt {attempts}"
+        $"attempt {attempts}"
     }
 
     on GetAttempts -> Int {

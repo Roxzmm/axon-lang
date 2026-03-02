@@ -6,7 +6,7 @@ module Tests.Effects
 // Function WITH explicit effects — must declare all effects it uses
 fn read_and_greet(path: String) -> String | IO, FileIO {
     let content = result_unwrap_or(read_file(path), "default")
-    "Read: {content}"
+    $"Read: {content}"
 }
 
 // Function WITH IO effect — can call print
@@ -23,7 +23,7 @@ fn pure_compute(x: Int, y: Int) -> Int {
 // Function that has IO but also calls pure functions — fine
 fn mixed_work(n: Int) -> String | IO {
     let doubled = pure_compute(n, 2)    // pure call from IO fn — allowed
-    "result: {doubled}"
+    $"result: {doubled}"
 }
 
 fn main() -> Unit {

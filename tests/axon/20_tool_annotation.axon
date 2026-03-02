@@ -10,7 +10,7 @@ fn add(a: Int, b: Int) -> Int {
 
 #[tool("Greet someone by name")]
 fn greet_tool(name: String, greeting: String = "Hello") -> String {
-    "{greeting}, {name}!"
+    $"{greeting}, {name}!"
 }
 
 #[tool]

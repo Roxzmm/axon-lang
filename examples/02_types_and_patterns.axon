@@ -64,9 +64,9 @@ fn describeTree<T: Show>(tree: Tree<T>) -> String {
     match tree {
         Leaf                         => "leaf"
         Node { value, left: Leaf, right: Leaf } =>
-            "leaf node: {value}"
+            $"leaf node: {value}"
         Node { value, left, right }  =>
-            "node: {value}, left={describeTree(left)}, right={describeTree(right)}"
+            $"node: {value}, left={describeTree(left)}, right={describeTree(right)}"
     }
 }
 
@@ -74,11 +74,11 @@ fn describeTree<T: Show>(tree: Tree<T>) -> String {
 fn classify(n: Int) -> String {
     match n {
         0               => "zero"
-        n if n < 0      => "negative: {n}"
-        n if n < 10     => "small: {n}"
-        n if n < 100    => "medium: {n}"
-        n if n % 2 == 0 => "large even: {n}"
-        n               => "large odd: {n}"
+        n if n < 0      => $"negative: {n}"
+        n if n < 10     => $"small: {n}"
+        n if n < 100    => $"medium: {n}"
+        n if n % 2 == 0 => $"large even: {n}"
+        n               => $"large odd: {n}"
     }
 }
 
@@ -86,10 +86,10 @@ fn classify(n: Int) -> String {
 fn describePair(pair: (Int, Int)) -> String {
     match pair {
         (0, 0)   => "origin"
-        (x, 0)   => "on x-axis at {x}"
-        (0, y)   => "on y-axis at {y}"
-        (x, y) if x == y => "on diagonal at {x}"
-        (x, y)   => "point ({x}, {y})"
+        (x, 0)   => $"on x-axis at {x}"
+        (0, y)   => $"on y-axis at {y}"
+        (x, y) if x == y => $"on diagonal at {x}"
+        (x, y)   => $"point ({x}, {y})"
     }
 }
 
@@ -111,7 +111,7 @@ fn firstTwo<T>(items: List<T>) -> Option<(T, T)> {
 // @ 绑定（整体绑定 + 解构）
 fn processNonEmpty<T>(items: List<T>) -> String {
     match items {
-        all @ [_, _, ..] => "Has at least 2 items: {all |> List.len()} total"
+        all @ [_, _, ..] => $"Has at least 2 items: {all |> List.len()} total"
         [x]             => "Single item"
         []              => "Empty"
     }
@@ -138,9 +138,9 @@ fn discountedPrice(price: Float, discount: Percentage) -> Float {
 // 从运行时值构建精化类型（验证）
 fn parsePort(s: String) -> Result<Port, String> {
     match Int.parse(s) {
-        Err(_) => Err("Not a number: {s}")
+        Err(_) => Err($"Not a number: {s}")
         Ok(n)  => Port.refine(n)
-                      |> Result.map_err(|_| "Port out of range: {n}")
+                      |> Result.map_err(|_| $"Port out of range: {n}")
     }
 }
 
@@ -183,15 +183,15 @@ fn testRecords() -> Unit | IO {
     }
 
     let older_alice = birthdayBump(alice)
-    print("{older_alice.name} is now {older_alice.age}")
+    print($"{older_alice.name} is now {older_alice.age}")
 
     // 解构
     let Person { name, age, email } = alice
-    print("Name: {name}, Age: {age}")
+    print($"Name: {name}, Age: {age}")
 
     // 部分解构（忽略 email）
     let Person { name: n, age: a, .. } = alice
-    print("{n} is {a}")
+    print($"{n} is {a}")
 
     // 嵌套解构
     let emp = Employee {
@@ -206,7 +206,7 @@ fn testRecords() -> Unit | IO {
         salary
     } = emp
 
-    print("{empName} lives in {city}, salary: {salary}")
+    print($"{empName} lives in {city}, salary: {salary}")
 }
 
 // ============================================================
@@ -239,5 +239,5 @@ fn testTree() -> Unit | IO {
     let tree = nums |> List.fold(Leaf, treeInsert)
     let sorted = treeToList(tree)
 
-    print("Sorted: {sorted}")  // [1, 3, 4, 5, 6, 7, 8]
+    print($"Sorted: {sorted}")  // [1, 3, 4, 5, 6, 7, 8]
 }

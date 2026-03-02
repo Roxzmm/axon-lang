@@ -6,66 +6,66 @@ module Tests.Format
 fn main() -> Unit {
     // ── Existing format (backwards compat) ───────────────────
     let pi = 3.14159
-    assert_eq("{pi:.2f}", "3.14", "float .2f")
-    assert_eq("{pi:.0f}", "3", "float .0f")
+    assert_eq($"{pi:.2f}", "3.14", "float .2f")
+    assert_eq($"{pi:.0f}", "3", "float .0f")
 
     let pct = 0.756
-    assert_eq("{pct:.1%}", "75.6%", "percent .1%")
+    assert_eq($"{pct:.1%}", "75.6%", "percent .1%")
 
     // ── Width + alignment ─────────────────────────────────────
     let n = 42
-    assert_eq("{n:>6}",  "    42", "right-align width 6")
-    assert_eq("{n:<6}",  "42    ", "left-align width 6")
-    assert_eq("{n:^6}",  "  42  ", "center width 6")
+    assert_eq($"{n:>6}",  "    42", "right-align width 6")
+    assert_eq($"{n:<6}",  "42    ", "left-align width 6")
+    assert_eq($"{n:^6}",  "  42  ", "center width 6")
 
     // ── Fill character ────────────────────────────────────────
-    // {n:0>6} = fill with '0', align right, width 6
-    assert_eq("{n:0>6}", "000042", "zero-fill right")
-    // {n:*<6} = fill with '*', align left, width 6
-    assert_eq("{n:*<6}", "42****", "star-fill left")
-    // {n:-^8} = fill with '-', align center, width 8
-    assert_eq("{n:-^8}", "---42---", "dash-fill center")
+    // $"{n:0>6}" = fill with '0', align right, width 6
+    assert_eq($"{n:0>6}", "000042", "zero-fill right")
+    // $"{n:*<6}" = fill with '*', align left, width 6
+    assert_eq($"{n:*<6}", "42****", "star-fill left")
+    // $"{n:-^8}" = fill with '-', align center, width 8
+    assert_eq($"{n:-^8}", "---42---", "dash-fill center")
 
     // ── Sign (sign is a separate format spec part) ────────────
     // {:+} means show + for positive numbers
     let pos = 7
     let neg = -3
-    assert_eq("{pos:+}", "+7", "positive with sign")
-    assert_eq("{neg:+}", "-3", "negative with sign")
+    assert_eq($"{pos:+}", "+7", "positive with sign")
+    assert_eq($"{neg:+}", "-3", "negative with sign")
 
     // {:+>8} means fill='+', align='>', width=8 (fill char takes priority)
-    assert_eq("{pos:+>8}", "+++++++7", "plus-fill right-align")
+    assert_eq($"{pos:+>8}", "+++++++7", "plus-fill right-align")
 
     // {: >8} — space sign, right-align, width 8
     // Use > alone for right-align with space fill
-    assert_eq("{pos:>8}",  "       7", "right-align no sign")
+    assert_eq($"{pos:>8}",  "       7", "right-align no sign")
 
     // ── Thousand separators ───────────────────────────────────
     let big = 1234567
-    assert_eq("{big:,}", "1,234,567", "comma thousands")
+    assert_eq($"{big:,}", "1,234,567", "comma thousands")
 
     // ── Number bases ─────────────────────────────────────────
     let v = 255
-    assert_eq("{v:b}", "11111111", "binary")
-    assert_eq("{v:x}", "ff",       "hex lower")
-    assert_eq("{v:X}", "FF",       "hex upper")
-    assert_eq("{v:o}", "377",      "octal")
+    assert_eq($"{v:b}", "11111111", "binary")
+    assert_eq($"{v:x}", "ff",       "hex lower")
+    assert_eq($"{v:X}", "FF",       "hex upper")
+    assert_eq($"{v:o}", "377",      "octal")
 
     // ── Scientific notation ───────────────────────────────────
     let sci = 12345.678
-    let sci_str = "{sci:.2e}"
+    let sci_str = $"{sci:.2e}"
     // e.g. "1.23e+4" — just check it starts with "1.23e"
     assert(starts_with(sci_str, "1.23e"), "scientific .2e")
 
     // ── String formatting ─────────────────────────────────────
     let word = "hi"
-    assert_eq("{word:>6}", "    hi", "string right-align")
-    assert_eq("{word:<6}", "hi    ", "string left-align")
-    assert_eq("{word:^6}", "  hi  ", "string center")
+    assert_eq($"{word:>6}", "    hi", "string right-align")
+    assert_eq($"{word:<6}", "hi    ", "string left-align")
+    assert_eq($"{word:^6}", "  hi  ", "string center")
 
     // ── Float with precision + alignment ─────────────────────
     let x = 3.14159
-    assert_eq("{x:8.2f}", "    3.14", "float width+prec right")
+    assert_eq($"{x:8.2f}", "    3.14", "float width+prec right")
 
     print("PASS: format")
 }

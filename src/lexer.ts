@@ -4,11 +4,12 @@
 
 export const enum TokenKind {
   // Literals
-  IntLit    = 'INT',
-  FloatLit  = 'FLOAT',
-  StringLit = 'STRING',
-  BoolLit   = 'BOOL',
-  CharLit   = 'CHAR',
+  IntLit              = 'INT',
+  FloatLit            = 'FLOAT',
+  StringLit           = 'STRING',      // "..." — plain, no interpolation
+  InterpolatedStringLit = 'ISTRING',   // $"..." — with {expr} interpolation
+  BoolLit             = 'BOOL',
+  CharLit             = 'CHAR',
 
   // Identifier
   Ident = 'IDENT',
@@ -272,9 +273,15 @@ export class Lexer {
       return this.readIdent(startLine, startCol);
     }
 
-    // Strings
+    // Interpolated strings: $"..."
+    if (ch === '$' && this.peek(1) === '"') {
+      this.advance(); // consume $
+      return this.readString(startLine, startCol, true);
+    }
+
+    // Plain strings: "..."  (braces are literal)
     if (ch === '"') {
-      return this.readString(startLine, startCol);
+      return this.readString(startLine, startCol, false);
     }
 
     // Characters
@@ -354,11 +361,11 @@ export class Lexer {
     return { kind, value, line, col };
   }
 
-  private readString(line: number, col: number): Token {
+  private readString(line: number, col: number, interpolated: boolean): Token {
     this.advance(); // consume opening "
     let value = '';
 
-    // Triple-quoted string
+    // Triple-quoted string (never interpolated in this implementation)
     if (this.src[this.pos] === '"' && this.peek(1) === '"') {
       this.advance(); this.advance();
       while (this.pos < this.src.length) {
@@ -375,7 +382,7 @@ export class Lexer {
       return { kind: TokenKind.StringLit, value, line, col };
     }
 
-    // Regular string (with interpolation encoded as special markers)
+    // Regular string
     while (this.pos < this.src.length && this.src[this.pos] !== '"') {
       if (this.src[this.pos] === '\\') {
         this.advance();
@@ -386,12 +393,12 @@ export class Lexer {
           case 'r':  value += '\r'; break;
           case '"':  value += '"';  break;
           case '\\': value += '\\'; break;
-          case '{':  value += '{';  break;
+          case '{':  value += '{';  break;  // \{ always produces literal {
           default:   value += '\\' + esc;
         }
         this.advance();
-      } else if (this.src[this.pos] === '{') {
-        // String interpolation: collect raw "{...}" including braces
+      } else if (interpolated && this.src[this.pos] === '{') {
+        // Interpolated string: collect raw "{...}" including braces
         value += '{';
         this.advance();
         let depth = 1;
@@ -408,7 +415,7 @@ export class Lexer {
       }
     }
     this.advance(); // consume closing "
-    return { kind: TokenKind.StringLit, value, line, col };
+    return { kind: interpolated ? TokenKind.InterpolatedStringLit : TokenKind.StringLit, value, line, col };
   }
 
   private readChar(line: number, col: number): Token {

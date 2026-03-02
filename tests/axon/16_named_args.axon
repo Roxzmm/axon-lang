@@ -4,7 +4,7 @@
 module Tests.NamedArgs
 
 fn greet(name: String, greeting: String = "Hello") -> String {
-    "{greeting}, {name}!"
+    $"{greeting}, {name}!"
 }
 
 fn rect_area(width: Int, height: Int) -> Int {
@@ -16,7 +16,7 @@ fn make_point(x: Int, y: Int, z: Int = 0) -> (Int, Int, Int) {
 }
 
 fn describe(subject: String, verb: String, obj: String) -> String {
-    "{subject} {verb} {obj}"
+    $"{subject} {verb} {obj}"
 }
 
 fn main() -> Unit {
