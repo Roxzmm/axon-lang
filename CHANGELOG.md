@@ -9,6 +9,22 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.4] - 2026-03-03
+
+### Interpreter — True Hot Reload
+- `hotReload()` now handles all top-level item kinds:
+  - `FnDecl`: updates function body in `globalEnv` (was already working)
+  - `AgentDecl`: patches handler maps on all live agent instances while **preserving state** (was already working)
+  - `ConstDecl`: evaluates and adds/updates constant in `globalEnv` (new)
+  - `#[Application]` fn: **incremental execution** — only statements added since the last run are executed (new); existing statements are skipped to avoid duplicate side effects
+- Agent state: new fields added in a reloaded agent declaration are **auto-initialized** with their default values on all live instances (new)
+- Added `interpreter_hot_reload(src: String)` builtin for testing: parses a source string and applies hot reload — enables Axon-level tests for reload semantics
+- Removed stale README description: hot reload was already doing live patching (not file-restart), not losing agent state
+- Added test 28: `28_hot_reload.axon` — verifies function update, handler patch with state preservation, new state field auto-init, multi-instance consistency
+- Registered `interpreter_hot_reload` in type checker
+
+---
+
 ## [0.2.3] - 2026-03-03
 
 ### Type Checker

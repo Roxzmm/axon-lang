@@ -1,0 +1,85 @@
+// ============================================================
+// Test: Hot Reload — live patch functions and agent handlers
+// ============================================================
+module Tests.HotReload
+
+// ── Agent under test ──────────────────────────────────────────
+
+agent Counter {
+    state { count: Int = 0, step: Int = 1 }
+    on Reset         { count = 0 }
+    on Increment     { count = count + step }
+    on Get -> Int    { count }
+    on GetStep -> Int { step }
+}
+
+// ── Helper function (reloadable) ──────────────────────────────
+
+fn counter_double(x: Int) -> Int { x * 2 }
+
+// ── Main ──────────────────────────────────────────────────────
+
+fn main() -> Unit {
+    // ── Test 1: function body update via hot reload ───────────
+    assert_eq(counter_double(5), 10, "initial counter_double = 10")
+
+    // Reload with a tripled version
+    interpreter_hot_reload("module Tests.Patch\nfn counter_double(x: Int) -> Int { x * 3 }")
+    assert_eq(counter_double(5), 15, "after reload counter_double = 15 (tripled)")
+
+    // Restore original
+    interpreter_hot_reload("module Tests.Patch\nfn counter_double(x: Int) -> Int { x * 2 }")
+    assert_eq(counter_double(5), 10, "restored counter_double = 10")
+
+    // ── Test 2: agent handler hot-patch with state preservation ─
+    let c = spawn Counter
+    c.send(Increment)
+    c.send(Increment)
+    c.send(Increment)
+    assert_eq(c.ask(Get), 3, "count before reload = 3")
+
+    // Hot-reload Counter: Increment now adds 10 instead of step
+    interpreter_hot_reload("
+        module Tests.Patch
+        agent Counter {
+            state { count: Int = 0, step: Int = 1 }
+            on Reset      { count = 0 }
+            on Increment  { count = count + 10 }
+            on Get -> Int { count }
+            on GetStep -> Int { step }
+        }
+    ")
+
+    // State preserved (still 3); new handler behaviour active
+    assert_eq(c.ask(Get), 3, "state preserved after handler reload")
+    c.send(Increment)
+    assert_eq(c.ask(Get), 13, "Increment now adds 10: 3 + 10 = 13")
+
+    // ── Test 3: new state field auto-initialized on live instance ─
+    // Reload adds 'bonus: Int = 100' and Increment now adds step + bonus
+    interpreter_hot_reload("
+        module Tests.Patch
+        agent Counter {
+            state { count: Int = 0, step: Int = 1, bonus: Int = 100 }
+            on Reset      { count = 0 }
+            on Increment  { count = count + step + bonus }
+            on Get -> Int { count }
+            on GetStep -> Int { step }
+        }
+    ")
+
+    // count is still 13; step is 1 (existing); bonus is 100 (new, auto-init'd)
+    assert_eq(c.ask(Get), 13, "count unchanged by state field addition")
+    assert_eq(c.ask(GetStep), 1, "existing state field step = 1")
+    c.send(Increment)
+    // count = 13 + step(1) + bonus(100) = 114
+    assert_eq(c.ask(Get), 114, "Increment uses new bonus field: 13 + 1 + 100 = 114")
+
+    // ── Test 4: second agent instance gets correct initial state ─
+    let c2 = spawn Counter
+    c2.send(Increment)
+    // c2: count = 0 + step(1) + bonus(100) = 101
+    assert_eq(c2.ask(Get), 101, "new agent: count = 0 + 1 + 100 = 101")
+
+    print("PASS: hot_reload")
+}

@@ -261,6 +261,8 @@ export class TypeChecker {
     // Multi-agent orchestration
     this.typeEnv.define('ask_all',             { kind: 'Fn', params: [U, U], ret: { kind: 'List', elem: U }, effects: [] });
     this.typeEnv.define('ask_any',             { kind: 'Fn', params: [U, U], ret: U, effects: [] });
+    // Test / introspection helpers
+    this.typeEnv.define('interpreter_hot_reload', { kind: 'Fn', params: [U], ret: T_UNIT, effects: [] });
 
     // Constants
     this.typeEnv.define('PI',       T_FLOAT);

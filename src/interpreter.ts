@@ -17,7 +17,7 @@ import {
   mkNativeAsync,
 } from './runtime/value';
 import { registerStdlib, toolRegistry as stdlibToolRegistry, httpRequest, jsToAxon, axonToJs } from './runtime/stdlib';
-import { spawnAgent, hotUpdateAgent, AgentSpawnConfig } from './runtime/agent';
+import { spawnAgent, hotUpdateAgent, listAgents, AgentSpawnConfig } from './runtime/agent';
 import { parse } from './parser';
 
 // ─── Helper: extract message type + args from a message value ─
@@ -78,6 +78,8 @@ export class Interpreter {
   // Module system: maps resolved module path → exported env
   private loadedModules = new Map<string, Environment>();
   private currentFile: string | null = null;
+  // Tracks how many statements of each #[Application] fn have been executed (for incremental reload)
+  private applicationExecCounts = new Map<string, number>();
 
   constructor() {
     this.globalEnv = new Environment();
@@ -343,6 +345,14 @@ export class Interpreter {
       );
     }));
 
+    // ── interpreter_hot_reload: test helper — reload program from source string ──
+    this.globalEnv.define('interpreter_hot_reload', mkNativeAsync('interpreter_hot_reload', async (src) => {
+      if (src.tag !== ValueTag.String) throw new RuntimeError('interpreter_hot_reload: expected String');
+      const prog = parse(src.value);
+      await this.hotReload(prog);
+      return UNIT;
+    }));
+
     // Snapshot builtin names so :env can filter them out
     for (const { name } of this.globalEnv.entries()) {
       this.builtinNames.add(name);
@@ -375,6 +385,7 @@ export class Interpreter {
     // Priority: #[Application] annotation > function named 'main'
     let mainFn: AxonValue | undefined;
     let applicationFn: AxonValue | undefined;
+    let entryDecl: FnDecl | undefined;
     for (const item of program.items) {
       if (item.kind === 'ConstDecl') {
         const val = await this.evalExpr(item.value, this.globalEnv);
@@ -383,9 +394,11 @@ export class Interpreter {
       if (item.kind === 'FnDecl') {
         if (item.annots.some(a => a === 'Application' || a.startsWith('Application('))) {
           applicationFn = this.globalEnv.tryGet(item.name);
+          entryDecl = item;
         }
         if (item.name === 'main') {
           mainFn = this.globalEnv.tryGet('main');
+          if (!entryDecl) entryDecl = item;
         }
       }
     }
@@ -397,6 +410,10 @@ export class Interpreter {
       const entryFn = applicationFn ?? mainFn;
       if (entryFn) {
         await this.callValueAsync(entryFn, []);
+        // Record stmt count for incremental reload of #[Application] fn
+        if (entryDecl?.body?.kind === 'Block') {
+          this.applicationExecCounts.set(entryDecl.name, entryDecl.body.stmts.length);
+        }
       }
     }
   }
@@ -492,7 +509,7 @@ export class Interpreter {
     }
   }
 
-  // Hot-reload: re-register updated items
+  // Hot-reload: re-register updated items, patch live agents, run new #[Application] stmts
   async hotReload(program: Program): Promise<{ modules: number; fns: number; agents: number }> {
     let fns = 0, agents = 0;
 
@@ -500,14 +517,48 @@ export class Interpreter {
       if (item.kind === 'FnDecl') {
         this.registerFn(item);
         fns++;
+        // Incremental execution for #[Application] entry points:
+        // Execute only statements added since the last run
+        if (item.annots.some(a => a === 'Application' || a.startsWith('Application('))) {
+          const prevCount = this.applicationExecCounts.get(item.name) ?? 0;
+          if (item.body?.kind === 'Block' && item.body.stmts.length > prevCount) {
+            const newStmts = item.body.stmts.slice(prevCount);
+            const newBody: Expr = {
+              kind: 'Block', stmts: newStmts, tail: null, span: item.body.span,
+            };
+            const syntheticFn: AxonValue = {
+              tag: ValueTag.Function,
+              name: `${item.name}$reload`,
+              params: [],
+              body: newBody,
+              closure: this.globalEnv,
+              isRecursive: false,
+            };
+            await this.callValueAsync(syntheticFn, []);
+            this.applicationExecCounts.set(item.name, item.body.stmts.length);
+          }
+        }
       } else if (item.kind === 'AgentDecl') {
         this.registerAgent(item);
-        // Update running agents
+        // Patch handler maps on all live instances of this agent type
         const newHandlers = this.buildAgentHandlers(item);
         const updated = hotUpdateAgent(item.name, newHandlers);
         agents += updated;
+        // Auto-init any new state fields on live instances
+        for (const ref of listAgents()) {
+          if (ref.name === item.name) {
+            for (const sf of item.stateFields) {
+              if (!ref.state.has(sf.name)) {
+                ref.state.set(sf.name, await this.evalExpr(sf.default_, this.globalEnv));
+              }
+            }
+          }
+        }
       } else if (item.kind === 'TypeDecl') {
         this.registerType(item);
+      } else if (item.kind === 'ConstDecl') {
+        const val = await this.evalExpr(item.value, this.globalEnv);
+        this.globalEnv.define(item.name, val, true);
       }
     }
 

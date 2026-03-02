@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 27 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 28 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -299,7 +299,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | LLM integration (Anthropic API) | ✅ Complete |
 | Module system | ✅ Complete |
 | REPL with history | ✅ Complete |
-| Hot reload (file-watch mode) | ⚠️ Partial — see below |
+| Hot reload (live patch, state preserved) | ✅ Complete |
 | Generics (`<T>`, `<A,B>`, generic types) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
@@ -310,24 +310,13 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 
 These are honest descriptions of current limitations, and why they exist.
 
-### 1. Hot Reload is File-Restart, Not True Live Patch
-
-`axon run --watch` re-executes the entire program on file change. This works for stateless scripts but loses agent state.
-
-**Why**: True hot reload requires the Supervisor to surgically patch running agent handler maps without re-running `#[Application]` entry points. The correct implementation (Erlang/OTP model) is specified in `spec/HOT_RELOAD.md` but not yet implemented.
-
-**Goal**: Save file → compiler accepts → running agents receive updated handlers, state preserved. No restart. No state loss.
-
-### 3. Concurrency is Cooperative, Not Parallel
+### 1. Concurrency is Cooperative, Not Parallel
 
 Agents run on the Node.js event loop. `ask_all` is concurrent (interleaved via promises), not truly parallel (not OS threads).
 
 **Why**: TypeScript/Node.js prototype. True parallelism requires either `worker_threads` or a compiled native backend.
 
 **Status**: Planned for the native compilation phase.
-
-
-**Status**: Next implementation priority.
 
 ### 5. No Inheritance
 
