@@ -1,0 +1,39 @@
+# EditorConfig — https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# TypeScript / JavaScript source
+[*.{ts,js,json}]
+indent_style = space
+indent_size = 4
+
+# Axon source files
+[*.axon]
+indent_style = space
+indent_size = 4
+
+# Markdown — preserve trailing spaces (they mean <br>)
+[*.md]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+# YAML (GitHub Actions workflows)
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# TOML config files
+[*.toml]
+indent_style = space
+indent_size = 2
+
+# EBNF grammar
+[*.ebnf]
+indent_style = space
+indent_size = 2
