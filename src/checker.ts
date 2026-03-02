@@ -117,6 +117,8 @@ export class TypeChecker {
   private currentFnName = '';
   // When true, ALL functions are subject to effect checking (even unannotated ones)
   private strictEffects = false;
+  // Type parameters in scope — these resolve to Unknown (unconstrained)
+  private typeVarMap = new Set<string>();
 
   constructor() {
     this.typeEnv = new TypeEnv();
@@ -283,14 +285,21 @@ export class TypeChecker {
   private registerDecl(item: TopLevel): void {
     switch (item.kind) {
       case 'FnDecl': {
+        // Push type parameters into scope for resolveType
+        const savedTVars = new Set(this.typeVarMap);
+        for (const tp of item.typeParams) this.typeVarMap.add(tp);
         const paramTypes = item.params.map(p => p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
         const retType    = item.retTy ? this.resolveType(item.retTy) : T_UNKNOWN;
+        this.typeVarMap  = savedTVars;
         this.typeEnv.define(item.name, {
           kind: 'Fn', params: paramTypes, ret: retType, effects: item.effects,
         });
         break;
       }
       case 'TypeDecl': {
+        // Push type parameters into scope so field types resolve correctly
+        const savedTVars = new Set(this.typeVarMap);
+        for (const tp of item.typeParams) this.typeVarMap.add(tp);
         this.typeDecls.set(item.name, item);
         this.typeEnv.define(item.name, { kind: 'Named', name: item.name, args: [] });
         // Register variant constructors
@@ -299,6 +308,7 @@ export class TypeChecker {
             this.typeEnv.define(variant.name, T_UNKNOWN);
           }
         }
+        this.typeVarMap = savedTVars;
         break;
       }
       case 'AgentDecl': {
@@ -329,6 +339,10 @@ export class TypeChecker {
   private checkFn(decl: FnDecl): void {
     if (!decl.body) return;
 
+    // Push type parameters into scope
+    const savedTVars = new Set(this.typeVarMap);
+    for (const tp of decl.typeParams) this.typeVarMap.add(tp);
+
     const fnEnv = this.typeEnv.child();
     for (const p of decl.params) {
       fnEnv.define(p.name, p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
@@ -349,6 +363,7 @@ export class TypeChecker {
 
     this.currentEffects = savedEffects;
     this.currentFnName  = savedFnName;
+    this.typeVarMap     = savedTVars;  // restore type param scope
 
     if (!typesCompatible(expectedRet, actualRet)) {
       this.error(
@@ -742,6 +757,8 @@ export class TypeChecker {
   private resolveType(te: TypeExpr): AxonType {
     switch (te.kind) {
       case 'NameType': {
+        // Type parameters in scope resolve to Unknown (unconstrained / universally polymorphic)
+        if (this.typeVarMap.has(te.name)) return T_UNKNOWN;
         switch (te.name) {
           case 'Int':     return T_INT;
           case 'Float':   return T_FLOAT;

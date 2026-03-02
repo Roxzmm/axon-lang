@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 26 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 27 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -300,7 +300,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Module system | ✅ Complete |
 | REPL with history | ✅ Complete |
 | Hot reload (file-watch mode) | ⚠️ Partial — see below |
-| Generics | 🔜 Next priority |
+| Generics (`<T>`, `<A,B>`, generic types) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 
@@ -326,11 +326,6 @@ Agents run on the Node.js event loop. `ask_all` is concurrent (interleaved via p
 
 **Status**: Planned for the native compilation phase.
 
-### 4. No Generics (Yet)
-
-`Unknown` is used as a placeholder where generics are needed. The type checker cannot verify type parameters.
-
-**Why**: HM inference with generics is non-trivial. Deferred to keep the prototype moving, but now prioritized.
 
 **Status**: Next implementation priority.
 

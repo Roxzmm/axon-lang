@@ -9,6 +9,19 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.3] - 2026-03-03
+
+### Type Checker
+- Implemented generics: type parameters (`<T>`, `<A, B>`, etc.) on functions and type declarations
+  now correctly scope to `Unknown` instead of emitting false type errors
+- Save/restore pattern ensures type parameter sets are isolated per declaration (no cross-leaks)
+- Generic user-defined types (`type Wrapper<T> { Inner(T) }`) now parse and check without errors
+- Stdlib generic types (`Option<T>`, `Result<T,E>`, `List<T>`) work without annotation errors
+- Added test 27: `27_generics.axon` — 37 assertions covering generic fns, list ops, custom types,
+  and stdlib generics with `Option`, `Result`, `List`
+
+---
+
 ## [0.2.2] - 2026-03-02
 
 ### Interpreter

@@ -1,0 +1,212 @@
+// ============================================================
+// Test: Generics — type parameters in functions and types
+// ============================================================
+module Tests.Generics
+
+// ── Generic functions ─────────────────────────────────────────
+
+fn identity<T>(x: T) -> T {
+    x
+}
+
+fn first<A, B>(a: A, b: B) -> A {
+    a
+}
+
+fn second<A, B>(a: A, b: B) -> B {
+    b
+}
+
+fn swap<A, B>(a: A, b: B) -> (B, A) {
+    (b, a)
+}
+
+fn make_pair<A, B>(a: A, b: B) -> (A, B) {
+    (a, b)
+}
+
+fn apply<A, B>(f: A -> B, x: A) -> B {
+    f(x)
+}
+
+fn compose<A, B, C>(f: A -> B, g: B -> C) -> A -> C {
+    |x| g(f(x))
+}
+
+fn repeat_apply<T>(f: T -> T, x: T, n: Int) -> T {
+    if n <= 0 { x }
+    else { repeat_apply(f, f(x), n - 1) }
+}
+
+// ── Generic list operations ───────────────────────────────────
+
+fn list_of_one<T>(x: T) -> List<T> {
+    [x]
+}
+
+fn list_of_two<T>(a: T, b: T) -> List<T> {
+    [a, b]
+}
+
+fn list_head_safe<T>(xs: List<T>) -> Option<T> {
+    match xs {
+        []       => None
+        [h, ..t] => Some(h)
+    }
+}
+
+fn list_map_generic<A, B>(xs: List<A>, f: A -> B) -> List<B> {
+    list_map(xs, f)
+}
+
+// ── Generic user-defined type ─────────────────────────────────
+
+type Wrapper<T> {
+    Inner(T)
+}
+
+fn wrap<T>(x: T) -> Wrapper<T> {
+    Inner(x)
+}
+
+fn unwrap<T>(w: Wrapper<T>) -> T {
+    match w {
+        Inner(x) => x
+    }
+}
+
+// ── Main ──────────────────────────────────────────────────────
+
+fn main() -> Unit {
+    // ── identity ─────────────────────────────────────────────
+    assert_eq(identity(42),      42,      "identity Int")
+    assert_eq(identity("hello"), "hello", "identity String")
+    assert_eq(identity(true),    true,    "identity Bool")
+    assert_eq(identity(3.14),    3.14,    "identity Float")
+
+    // identity result can be used in operations
+    let n = identity(10)
+    assert_eq(n + 5, 15, "identity Int used in arithmetic")
+
+    let s = identity("world")
+    assert_eq(len(s), 5, "identity String len")
+
+    // ── first / second ───────────────────────────────────────
+    assert_eq(first(10, "ignored"),  10,        "first: Int, String")
+    assert_eq(first("kept", 99),     "kept",    "first: String, Int")
+    assert_eq(second(10, "second"),  "second",  "second: Int, String")
+    assert_eq(second("ignored", 42), 42,        "second: String, Int")
+
+    // ── swap ─────────────────────────────────────────────────
+    let (b, a) = swap(1, "two")
+    assert_eq(a, 1,     "swap: Int becomes snd")
+    assert_eq(b, "two", "swap: String becomes fst")
+
+    let (y, x) = swap("alpha", 99)
+    assert_eq(x, "alpha", "swap String-Int: snd")
+    assert_eq(y, 99,      "swap String-Int: fst")
+
+    // ── make_pair ────────────────────────────────────────────
+    let p = make_pair(42, "answer")
+    assert_eq(p[0], 42,       "pair fst")
+    assert_eq(p[1], "answer", "pair snd")
+
+    // ── apply ────────────────────────────────────────────────
+    let doubled = apply(|x| x * 2, 21)
+    assert_eq(doubled, 42, "apply double")
+
+    let shouted = apply(|s| upper(s), "hello")
+    assert_eq(shouted, "HELLO", "apply upper")
+
+    // ── compose ──────────────────────────────────────────────
+    let double_then_str = compose(|x| x * 2, |x| str(x))
+    assert_eq(double_then_str(21), "42", "compose double->str")
+
+    // ── repeat_apply ─────────────────────────────────────────
+    let inc = |x| x + 1
+    assert_eq(repeat_apply(inc, 0, 5),  5,  "repeat_apply +1 x5")
+    assert_eq(repeat_apply(inc, 10, 0), 10, "repeat_apply x0")
+
+    // ── Generic list operations ───────────────────────────────
+    let single_int = list_of_one(42)
+    assert_eq(len(single_int), 1, "list_of_one len")
+    assert_eq(single_int[0],  42, "list_of_one value")
+
+    let single_str = list_of_one("axon")
+    assert_eq(single_str[0], "axon", "list_of_one String")
+
+    let two_ints = list_of_two(1, 2)
+    assert_eq(len(two_ints), 2,       "list_of_two len")
+    assert_eq(list_sum(two_ints), 3,  "list_of_two sum")
+
+    let two_strs = list_of_two("hello", "world")
+    assert_eq(len(two_strs), 2, "list_of_two String len")
+
+    // list_head_safe
+    let h1 = list_head_safe([10, 20, 30])
+    assert(option_is_some(h1), "head_safe non-empty")
+    assert_eq(option_unwrap(h1), 10, "head_safe value")
+
+    let h2 = list_head_safe([])
+    assert(option_is_none(h2), "head_safe empty")
+
+    // list_map_generic
+    let mapped = list_map_generic([1, 2, 3], |x| x * x)
+    assert_eq(list_sum(mapped), 14, "list_map_generic squares sum")
+
+    let uppercased = list_map_generic(["hi", "there"], |s| upper(s))
+    assert_eq(uppercased[0], "HI",    "list_map_generic upper 0")
+    assert_eq(uppercased[1], "THERE", "list_map_generic upper 1")
+
+    // ── Stdlib generic types ──────────────────────────────────
+    // Option<T> — works with any T
+    let opt_int: Option<Int>    = Some(42)
+    let opt_str: Option<String> = Some("hello")
+    let opt_none: Option<Int>   = None
+
+    assert(option_is_some(opt_int),  "Option<Int> Some")
+    assert(option_is_some(opt_str),  "Option<String> Some")
+    assert(option_is_none(opt_none), "Option<Int> None")
+    assert_eq(option_unwrap(opt_int), 42,      "Option<Int> unwrap")
+    assert_eq(option_unwrap(opt_str), "hello", "Option<String> unwrap")
+
+    // Result<T, E> — works with any T, E
+    let ok_int:  Result<Int, String> = Ok(100)
+    let err_str: Result<Int, String> = Err("oops")
+    let ok_str:  Result<String, Int> = Ok("done")
+
+    assert(result_is_ok(ok_int),   "Result<Int,String> Ok")
+    assert(result_is_err(err_str), "Result<Int,String> Err")
+    assert(result_is_ok(ok_str),   "Result<String,Int> Ok")
+    assert_eq(result_unwrap(ok_int), 100,    "Result<Int,String> unwrap")
+    assert_eq(result_unwrap(ok_str), "done", "Result<String,Int> unwrap")
+
+    // List<T> — typed list operations
+    let ints: List<Int>    = [10, 20, 30]
+    let strs: List<String> = ["a", "bb", "ccc"]
+
+    assert_eq(len(ints), 3, "List<Int> len")
+    assert_eq(len(strs), 3, "List<String> len")
+    assert_eq(list_sum(ints), 60, "List<Int> sum")
+
+    let int_doubled  = list_map(ints, |x| x * 2)
+    let str_lengths  = list_map(strs, |s| len(s))
+    assert_eq(list_sum(int_doubled), 120, "List<Int> map double")
+    assert_eq(list_sum(str_lengths), 6,   "List<String> map len")
+
+    // ── User-defined generic type Wrapper<T> ──────────────────
+    let wi = wrap(42)
+    assert_eq(unwrap(wi), 42, "Wrapper<Int> wrap/unwrap")
+
+    let ws = wrap("axon")
+    assert_eq(unwrap(ws), "axon", "Wrapper<String> wrap/unwrap")
+
+    let wb = wrap(true)
+    assert_eq(unwrap(wb), true, "Wrapper<Bool> wrap/unwrap")
+
+    // Nested: wrap(wrap(42))
+    let ww = wrap(wrap(99))
+    assert_eq(unwrap(unwrap(ww)), 99, "nested Wrapper unwrap")
+
+    print("PASS: generics")
+}
