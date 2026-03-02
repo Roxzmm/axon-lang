@@ -275,7 +275,10 @@ export class Parser {
     }
 
     // Enum: variants starting with | or bare variant
-    if (this.check(TokenKind.Bar) || (this.checkIdent() && this.isUpperIdent(this.cur().value))) {
+    // But NOT if the identifier is followed by `where` (alias/refinement) or `<` (generic alias)
+    const nextTokKind = this.tokens[this.pos + 1]?.kind;
+    const bareIdentIsAlias = nextTokKind === TokenKind.KwWhere || nextTokKind === TokenKind.Lt;
+    if (this.check(TokenKind.Bar) || (this.checkIdent() && this.isUpperIdent(this.cur().value) && !bareIdentIsAlias)) {
       const variants: TypeVariant[] = [];
       while (this.check(TokenKind.Bar) || (this.checkIdent() && this.isUpperIdent(this.cur().value))) {
         if (this.check(TokenKind.Bar)) this.advance();
@@ -311,8 +314,14 @@ export class Parser {
       return { kind: 'Enum', variants };
     }
 
-    // Alias
-    return { kind: 'Alias', ty: this.parseType() };
+    // Alias or Refinement: `Int` or `Int where self > 0`
+    const baseTy = this.parseType();
+    if (this.check(TokenKind.KwWhere)) {
+      this.advance();
+      const pred = this.parseExpr();
+      return { kind: 'Refine', base: baseTy, pred };
+    }
+    return { kind: 'Alias', ty: baseTy };
   }
 
   // ── Agent Declaration ────────────────────────────────────

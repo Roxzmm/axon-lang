@@ -673,6 +673,27 @@ export class Interpreter {
         this.registerVariantConstructor(decl.name, variant);
       }
       this.typeRegistry.set(decl.name, info);
+    } else if (decl.def.kind === 'Refine') {
+      // Refinement type: `type Foo = Int where self > 0`
+      // Register `Foo` as a namespace Record with `new` and `refine` callable fields.
+      const pred  = decl.def.pred;
+      const tName = decl.name;
+      const refineConstructor = mkNativeAsync(`${tName}.new`, async (value) => {
+        const predEnv = new Environment(this.globalEnv);
+        predEnv.define('self', value);
+        const ok = await this.evalExpr(pred, predEnv);
+        if (ok.tag === ValueTag.Bool && !ok.value) {
+          return mkErr(mkString(`${tName}: predicate failed for ${displayValue(value)}`));
+        }
+        return mkOk(value);
+      });
+      // Expose as a namespace record: PositiveInt.new(v) / PositiveInt.refine(v)
+      const nsRecord: AxonValue = {
+        tag: ValueTag.Record,
+        typeName: `__typeNS_${tName}`,
+        fields: new Map([['new', refineConstructor], ['refine', refineConstructor]]),
+      };
+      this.globalEnv.define(tName, nsRecord, true);
     }
   }
 
@@ -1479,6 +1500,14 @@ export class Interpreter {
         const { stopAgent } = await import('./runtime/agent');
         stopAgent(obj.ref.id);
         return UNIT;
+      }
+    }
+
+    // Record field as callable (enables TypeName.method() namespace pattern)
+    if (obj.tag === ValueTag.Record) {
+      const fieldFn = obj.fields.get(method);
+      if (fieldFn && (fieldFn.tag === ValueTag.AsyncNativeFn || fieldFn.tag === ValueTag.NativeFn || fieldFn.tag === ValueTag.Function)) {
+        return this.callValueAsync(fieldFn, args);
       }
     }
 

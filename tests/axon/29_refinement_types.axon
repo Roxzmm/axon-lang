@@ -1,0 +1,82 @@
+// ============================================================
+// Test: Refinement Types — runtime predicate validation
+// ============================================================
+module Tests.RefinementTypes
+
+// ── Type definitions ──────────────────────────────────────────
+
+type PositiveInt = Int    where self > 0
+type NonNegInt   = Int    where self >= 0
+type SmallInt    = Int    where self >= 0 &&self < 10
+type Port        = Int    where self >= 1 &&self <= 65535
+type Email       = String where contains(self, "@")
+type Percentage  = Float  where self >= 0.0 &&self <= 100.0
+
+// ── Main ──────────────────────────────────────────────────────
+
+fn main() -> Unit {
+    // ── PositiveInt ───────────────────────────────────────────
+    let ok1 = PositiveInt.new(42)
+    assert(result_is_ok(ok1),  "PositiveInt.new(42) is Ok")
+    assert_eq(result_unwrap(ok1), 42, "PositiveInt.new(42) unwraps to 42")
+
+    let err1 = PositiveInt.new(0)
+    assert(result_is_err(err1), "PositiveInt.new(0) is Err")
+
+    let err2 = PositiveInt.new(-5)
+    assert(result_is_err(err2), "PositiveInt.new(-5) is Err")
+
+    let ok2 = PositiveInt.refine(1)
+    assert(result_is_ok(ok2), "PositiveInt.refine(1) is Ok")
+
+    // ── NonNegInt ─────────────────────────────────────────────
+    assert(result_is_ok(NonNegInt.new(0)),   "NonNegInt.new(0) is Ok")
+    assert(result_is_ok(NonNegInt.new(100)), "NonNegInt.new(100) is Ok")
+    assert(result_is_err(NonNegInt.new(-1)), "NonNegInt.new(-1) is Err")
+
+    // ── SmallInt (compound predicate) ─────────────────────────
+    assert(result_is_ok(SmallInt.new(0)),   "SmallInt.new(0) is Ok")
+    assert(result_is_ok(SmallInt.new(9)),   "SmallInt.new(9) is Ok")
+    assert(result_is_err(SmallInt.new(10)), "SmallInt.new(10) is Err (not < 10)")
+    assert(result_is_err(SmallInt.new(-1)), "SmallInt.new(-1) is Err (not >= 0)")
+
+    // ── Port ──────────────────────────────────────────────────
+    assert(result_is_ok(Port.new(80)),    "Port.new(80) is Ok")
+    assert(result_is_ok(Port.new(65535)), "Port.new(65535) is Ok")
+    assert(result_is_ok(Port.new(1)),     "Port.new(1) is Ok")
+    assert(result_is_err(Port.new(0)),    "Port.new(0) is Err (< 1)")
+    assert(result_is_err(Port.new(65536)), "Port.new(65536) is Err (> 65535)")
+
+    // ── Email ─────────────────────────────────────────────────
+    let ok_email = Email.new("user@example.com")
+    assert(result_is_ok(ok_email),  "Email.new valid is Ok")
+    assert_eq(result_unwrap(ok_email), "user@example.com", "Email.new unwraps to original")
+
+    assert(result_is_err(Email.new("not-an-email")), "Email.new without @ is Err")
+    assert(result_is_err(Email.new("")),              "Email.new empty is Err")
+
+    // ── Percentage ────────────────────────────────────────────
+    assert(result_is_ok(Percentage.new(0.0)),   "Percentage.new(0.0) is Ok")
+    assert(result_is_ok(Percentage.new(100.0)), "Percentage.new(100.0) is Ok")
+    assert(result_is_ok(Percentage.new(50.5)),  "Percentage.new(50.5) is Ok")
+    assert(result_is_err(Percentage.new(-1.0)), "Percentage.new(-1.0) is Err")
+    assert(result_is_err(Percentage.new(100.1)), "Percentage.new(100.1) is Err")
+
+    // ── Chaining with Result ──────────────────────────────────
+    // Typical usage: validate then use
+    let port_res = Port.new(443)
+    let msg = match port_res {
+        Ok(p)    => $"Port {p} is valid"
+        Err(msg) => $"Invalid: {msg}"
+    }
+    assert_eq(msg, "Port 443 is valid", "Port chain match")
+
+    let bad_port_res = Port.new(99999)
+    let msg2 = match bad_port_res {
+        Ok(p)    => "should not reach here"
+        Err(_)   => "caught invalid port"
+    }
+    assert_eq(msg2, "caught invalid port", "bad port chain match")
+
+    print("PASS: refinement_types")
+}

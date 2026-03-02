@@ -138,7 +138,7 @@ export type TypeDef =
   | { kind: 'Record';  fields: { name: string; ty: TypeExpr; default_?: Expr }[] }
   | { kind: 'Enum';    variants: TypeVariant[] }
   | { kind: 'Alias';   ty: TypeExpr }
-  | { kind: 'Refine';  base: TypeExpr; pred: string };
+  | { kind: 'Refine';  base: TypeExpr; pred: Expr };
 
 export interface StateField {
   name:    string;

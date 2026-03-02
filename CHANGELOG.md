@@ -9,6 +9,25 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.5] - 2026-03-03
+
+### Parser
+- Refinement type syntax: `type Foo = BaseType where predicate` now parses correctly
+- Fixed: bare uppercase identifier followed by `where` or `<` no longer incorrectly enters the Enum parse branch (was a latent parser bug for alias types like `type Foo = Bar`)
+
+### Type Checker
+- `Refine` TypeDef is treated as `Unknown` (no false errors)
+
+### Interpreter
+- Refinement types create a namespace Record with `new` and `refine` callable fields:
+  - `TypeName.new(value)` → `Result<T, String>` — validates predicate at runtime
+  - `TypeName.refine(value)` → alias for `new`
+  - Predicate evaluated with `self` bound to the value being checked
+- Record fields that are callable functions can now be invoked as method calls: `rec.field(args)` — enables the namespace pattern for type constructors
+- Added test 29: `29_refinement_types.axon` — covers PositiveInt, Port, Email, Percentage, compound predicates, Result chaining
+
+---
+
 ## [0.2.4] - 2026-03-03
 
 ### Interpreter — True Hot Reload
