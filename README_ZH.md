@@ -92,7 +92,7 @@ fn main() -> Unit {
     c.send(Increment)
     c.send(Increment)
     let n = c.ask(GetCount)   // => 2
-    print("Count: {n}")
+    print($"Count: {n}")
 }
 ```
 
@@ -130,8 +130,8 @@ fn divide(a: Float, b: Float) -> Result<Float, String> {
 
 fn main() -> Unit {
     match divide(10.0, 3.0) {
-        Ok(n)  => print("Result: {n:.2f}")
-        Err(e) => print("Error: {e}")
+        Ok(n)  => print($"Result: {n:.2f}")
+        Err(e) => print($"Error: {e}")
     }
 }
 ```
@@ -189,7 +189,7 @@ fn main() -> Unit {
 #[tool("Search the web and return a summary")]
 fn web_search(query: String) -> String | IO {
     // ... 实现
-    "results for: {query}"
+    $"results for: {query}"
 }
 
 fn main() -> Unit {
@@ -233,26 +233,29 @@ fn main() -> Unit {
 
 ## 已知限制
 
-### 1. 字符串中的 `{` 触发插值
+### 1. `$"..."` 插值语法尚未在解释器中实现
+
+规范定义 `$"Hello {name}"` 为字符串插值语法（C# 风格的 `$` 前缀）。普通字符串 `"..."` 没有插值——`{` 是字面字符。
+
+当前解释器原型仍使用旧语法：任何 `"..."` 字符串都将 `{` 视为插值表达式的开始。
 
 ```axon
-// 失败 —— { 触发插值
-let s = "{"
+// 规范（目标）:   $"Hello, {name}!"   — 插值字符串
+//                "Hello, {name}!"    — 字面文本，无插值
 
-// 解决方案：用 json_stringify 构建结构化字符串
-let obj = map_insert(map_empty(), "key", "value")
-let s   = json_stringify(obj)   // ✅ 可用
+// 当前解释器行为:
+// "Hello, {name}!"  — 仍然是插值（旧行为）
 ```
 
-**原因**：词法分析器在任何字符串上下文中遇到 `{` 都会切换到"插值模式"。目前没有转义序列（`\{` 可以解决此问题）。
+**原因**：这是一个破坏性变更，需要更新词法分析器。实现直接——在词法器任务列表中排在首位。
 
-**状态**：将修复。所有实际场景都有解决方案。
+**状态**：`examples/` 中的示例使用旧语法，并通过全部 25 项测试。解释器实现 `$"..."` 后将统一更新。
 
 ### 2. 热更新是文件重启，不是真正的动态补丁
 
 `axon run --watch` 在文件变更时重新执行整个程序，会丢失 agent 状态。
 
-**原因**：真正的热更新需要在不重新运行 `main()` 的情况下，以外科手术式更新 running agent 的处理器映射。正确的实现（Erlang/OTP 模型）已规划但尚未完成。
+**原因**：真正的热更新需要 Supervisor 以外科手术方式更新运行中 agent 的处理器映射，而无需重新运行 `#[Application]` 入口点。正确的实现（Erlang/OTP 模型）已在 `spec/HOT_RELOAD.md` 中规定，但尚未完成。
 
 **目标**：保存文件 → 编译通过 → running 中的 agent 收到更新后的处理器，状态保留。无重启，无状态丢失。
 
@@ -293,10 +296,10 @@ Axon 使用**结构化类型**（通过消息兼容性的隐式接口）、**组
 完整计划见 [NEXT_PHASE_PLAN_V2.md](NEXT_PHASE_PLAN_V2.md)。当前优先级：
 
 1. **泛型** — `List<T>`、`Option<T>`、`Result<T, E>` 具有真正的类型参数
-2. **真正热更新** — 无重启、无状态丢失地补丁运行中的 agent 处理器
-3. **`\{` 转义** — 修复字符串字面量 `{` 与插值的冲突
+2. **真正热更新** — Supervisor 模型：补丁运行中的 agent 处理器，无重启，无状态丢失
+3. **`$"..."` 插值** — 在词法器中实现新语法，更新所有示例
 4. **OS 线程 Agent** — `worker_threads` 后端实现真正并行
-5. **`main()` 隐式 `| IO`** — 让严格效果成为默认，而不是 opt-in
+5. **`#[Application]` 解释器支持** — `axon run` 识别 `#[Application]` 为入口点
 
 ---
 

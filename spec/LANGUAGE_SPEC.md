@@ -1,7 +1,10 @@
-# Axon 语言完整规范 v0.1
+# Axon Language Specification
 
-**版本**：0.1（设计稿）
-**状态**：提案
+**Version**: 0.2
+**Status**: Active design — prototype implementation exists (TypeScript interpreter, 25 tests passing)
+**Authoritative principles**: see `spec/PRINCIPLES.md`
+
+> When this document conflicts with `PRINCIPLES.md`, `PRINCIPLES.md` wins.
 
 ---
 
@@ -52,31 +55,31 @@ effect_name ::= [A-Z][a-zA-Z0-9_]*   // Effect 名必须大写开头
 ### 1.3 关键字
 
 ```
-// 声明
-module  use  fn  type  trait  impl  agent  effect  capability
+// Declarations
+module  use  fn  type  impl  agent  effect
 
-// 控制流
+// Control flow
 if  else  match  loop  while  for  break  continue  return
 
-// 绑定
+// Bindings
 let  mut  const
 
-// 值
-true  false  null_never_exists  // 没有 null/nil/undefined
+// Values
+true  false     // no null/nil/undefined — use Option<T>
 
-// 类型相关
+// Type-related
 where  as  in  is
 
-// Agent/并发
-spawn  send  ask  await  on  emit  state
+// Agent / concurrency
+spawn  send  ask  await  on  state
 
-// 热更新
-migrate  from  to  with  hot
+// Hot reload
+migrate  from  to  with
 
-// 错误处理
-Ok  Err  Some  None  try  catch
+// Error handling
+Ok  Err  Some  None
 
-// 可见性
+// Visibility
 pub  priv  internal
 ```
 
@@ -160,18 +163,23 @@ let c: Char   = 'A'
 let c2: Char  = '中'
 let s: String = "Hello, 世界!"
 
-// 字符串插值
+// String interpolation — $ prefix marks the string as interpolated
+// { expr } inside is evaluated; uninterpolated strings treat { as literal
 let name = "Axon"
-let msg  = "Hello, {name}!"           // "Hello, Axon!"
-let expr = "1 + 1 = {1 + 1}"         // "1 + 1 = 2"
-let raw  = r"no \n escape here"       // 原始字符串
+let msg  = $"Hello, {name}!"         // "Hello, Axon!"
+let expr = $"1 + 1 = {1 + 1}"       // "1 + 1 = 2"
+let fmt  = $"pi = {3.14159:.2f}"    // "pi = 3.14"
 
-// 多行字符串
+// Regular strings: { is a literal character — safe for JSON, templates, etc.
+let json_str = "{"key": "value"}"     // ✓ — no interpolation
+let raw      = r"no \n escape here"  // raw string — backslash is literal
+
+// Multi-line string
 let poem = """
     Line one
     Line two
     Line three
-    """  // 自动去除公共缩进
+    """  // 自动去除公共缩进（去除最小公共前缀空格）
 ```
 
 ### 2.4 Unit 类型
@@ -261,8 +269,8 @@ let ys = xs |> List.prepend(0)  // [0, 1, 2, 3, 4, 5]，xs 不变
 // 模式匹配
 match xs {
     []       => "empty"
-    [x]      => "singleton: {x}"
-    [x, ..rest] => "head: {x}, tail has {rest |> List.len()} items"
+    [x]      => $"singleton: {x}"
+    [x, ..rest] => $"head: {x}, tail has {rest |> List.len()} items"
 }
 ```
 
@@ -349,7 +357,7 @@ for item in items {
 
 // for 带索引
 for (i, item) in items |> Iter.enumerate() {
-    print("{i}: {item}")
+    print($"{i}: {item}")
 }
 
 // for 带范围
@@ -382,7 +390,7 @@ let result2 = items
 ```axon
 // await 在 | Async effect 中使用
 fn fetchUser(id: UserId) -> Result<User, Error> | Async, IO {
-    let resp = await http.get("/users/{id}")?
+    let resp = await http.get($"/users/{id}")?
     let user = await resp.json::<User>()?
     Ok(user)
 }
@@ -575,17 +583,17 @@ match shape {
 // 元组模式
 match (x, y) {
     (0, 0) => "origin"
-    (x, 0) => "on x-axis: {x}"
-    (0, y) => "on y-axis: {y}"
-    (x, y) => "point ({x}, {y})"
+    (x, 0) => $"on x-axis: {x}"
+    (0, y) => $"on y-axis: {y}"
+    (x, y) => $"point ({x}, {y})"
 }
 
 // 列表模式
 match list {
     []             => "empty"
-    [x]            => "one: {x}"
-    [x, y]         => "two: {x}, {y}"
-    [x, y, ..rest] => "many, first two: {x}, {y}"
+    [x]            => $"one: {x}"
+    [x, y]         => $"two: {x}, {y}"
+    [x, y, ..rest] => $"many, first two: {x}, {y}"
 }
 
 // Option 模式（常用）
@@ -609,14 +617,14 @@ match value {
 
 // 绑定 + 模式（@ 操作符）
 match list {
-    all @ [_, _, ..] => "has at least 2: {all}"
+    all @ [_, _, ..] => $"has at least 2: {all}"
     _                => "too short"
 }
 
 // 嵌套模式
 match user {
-    User { name, age: 18..=65, .. } => "working age: {name}"
-    User { name, age, .. }          => "{name} is {age}"
+    User { name, age: 18..=65, .. } => $"working age: {name}"
+    User { name, age, .. }          => $"{name} is {age}"
 }
 ```
 
@@ -724,10 +732,10 @@ type Point = { x: Float, y: Float }
 
 impl Printable for Point {
     fn print(self) -> Unit | IO {
-        print("Point({self.x}, {self.y})")
+        print($"Point({self.x}, {self.y})")
     }
     fn format(self) -> String {
-        "({self.x}, {self.y})"
+        $"({self.x}, {self.y})"
     }
 }
 
@@ -793,63 +801,81 @@ trait TryFrom<T> { fn try_from(val: T) -> Result<Self, ConversionError> }
 
 ## 10. Effect 系统
 
-完整说明见 `EFFECTS.md`，此处为摘要。
+> 完整说明见 `spec/EFFECTS.md`。权威摘要见 `spec/PRINCIPLES.md` §Effect System。
 
-### 10.1 内置 Effect
+Effect 注解描述函数**被允许执行的副作用**，是**上界限制**，而非强制要求。
 
-```axon
-effect IO          // 文件、标准输入输出、系统调用
-effect Async       // 异步操作（非阻塞 I/O）
-effect State<S>    // 可变状态
-effect Raise<E>    // 可恢复错误（非 panic）
-effect Log         // 日志记录
-effect Trace       // 执行追踪
-effect Random      // 随机数生成（使其纯函数化）
-effect Time        // 时钟访问（使其可测试）
-effect NetworkIO   // 网络 I/O（IO 的子集）
-effect FileIO      // 文件 I/O（IO 的子集）
-```
-
-### 10.2 Effect 声明与传播
+### 10.1 三种模式
 
 ```axon
-// 函数声明带 effect
-fn readFile(path: Path) -> Result<String, IOError> | IO
-
-// Effect 自动传播（如果调用了带 effect 的函数，自己也必须声明该 effect）
-fn processFile(path: Path) -> Result<Data, Error> | IO {
-    let content = readFile(path)?  // readFile 有 IO effect
-    // 所以 processFile 也必须声明 | IO
-    Ok(parse(content))
+// 1. 无注解 — effect-polymorphic（继承调用者的 effect 上下文，编译器不限制）
+fn helper(data: String) -> String {
+    trim(data)  // ✓ — 不受限制
 }
 
-// 纯函数（无 effect 声明）
-fn parseJson(s: String) -> Result<Json, ParseError> {
-    // 如果这里调用了有副作用的函数，编译器报错
-    ...
+// 2. 有注解 — effect-restricted（编译器验证只使用声明的 effects）
+fn fetch_user(id: Int) -> Result<User, String> | IO {
+    let resp = http_get($"/users/{id}")?   // ✓ — Network ⊆ IO
+    Ok(parse_user(resp))
+}
+// random()  // ✗ — Random 不是 IO 的子 effect → 编译错误
+
+// 3. Pure — 零副作用（#[Pure] 标注）
+#[Pure]
+fn add(a: Int, b: Int) -> Int {
+    a + b  // ✓
+    // print("x")  // ✗ — IO 不被允许 → 编译错误
 }
 ```
 
-### 10.3 Capability 系统
+### 10.2 内置 Effect 与子类型
+
+```
+IO
+├── FileIO    (read_file, write_file, file_exists)
+├── Network   (http_get, http_post, http_get_json)
+├── Env       (env_get, env_set, env_all, args)
+└── LLM       (llm_call, llm_structured, agent_tool_loop)
+
+Random        (random, random_int, random_bool — 独立，不属于 IO)
+Async         (sleep, 并发 agent 操作)
+State<S>      (命名可变状态单元，规划中)
+```
+
+声明 `| IO` 自动覆盖所有 IO 子效果，无需写 `| IO, FileIO, Network`。
+
+### 10.3 Effect 检查规则
 
 ```axon
-// 声明能力
-capability FileRead   = allows FileIO where mode == ReadOnly
-capability FileWrite  = allows FileIO where mode == Write
-capability Network    = allows NetworkIO
-capability SpawnAgent = allows spawning new Agents
+// 无注解函数：不检查（effect-polymorphic）
+fn helper() -> Unit {
+    print("log")       // ✓
+    http_get("url")    // ✓
+}
 
-// Agent 声明所需能力
-agent SecureProcessor {
-    requires FileRead, Network  // 只有这两种权限
+// 有注解函数：严格检查
+fn restricted() -> Unit | IO {
+    print("log")       // ✓ — IO 已声明
+    http_get("url")    // ✓ — Network ⊆ IO
+    // random()        // ✗ — Random ⊄ IO → 编译错误
+}
 
-    // 编译器拒绝任何超出 requires 范围的操作
-    on Process(data: Data) -> Result<Output, Error> | Async {
-        let config = File.read("config.json")?  // OK: FileRead
-        let result = await http.post(url, data)?  // OK: Network
-        // File.delete("config.json")  // 编译错误：需要 FileWrite 能力
-        Ok(result)
-    }
+// --strict-effects 模式：所有函数都被检查（无注解 = | {}）
+// axon run myfile.axon --strict-effects
+// axon check myfile.axon --strict-effects
+```
+
+### 10.4 Supervisor 上下文
+
+`#[Application]` 标记的函数和顶层语句在 **Supervisor 上下文**中运行，该上下文无限制，可执行任何 effect。
+
+```axon
+#[Application]
+fn serve() -> Unit {    // 无需 | 注解 — Supervisor 上下文无限制
+    let pool = init_db()           // ✓
+    let server = spawn ApiServer
+    server.send(Start(pool))
+    print("Server started")
 }
 ```
 
@@ -857,16 +883,15 @@ agent SecureProcessor {
 
 ## 11. Agent 模型
 
-完整说明见 `AGENT_MODEL.md`。
+> 完整说明见 `spec/AGENT_MODEL.md`。
+
+Agent 是封装了状态的 Actor，所有通信通过带类型的消息传递。Agent 之间不共享可变状态。
 
 ### 11.1 Agent 声明
 
 ```axon
 agent AgentName {
-    // 可选：能力声明
-    requires Capability1, Capability2
-
-    // 状态定义
+    // 状态定义（字段有默认值）
     state {
         field1: Type1 = default_value1
         field2: Type2 = default_value2
@@ -875,53 +900,49 @@ agent AgentName {
     // 消息处理器
     on MessageType(params...) -> ReturnType | Effects {
         // 处理逻辑
-        // 可以访问和修改 state
-        // 可以发送消息给其他 agent
+        // 可以访问和修改 state 字段
+        // 可以 spawn / send / ask 其他 agent
     }
 
-    // 生命周期钩子（可选）
-    on Start -> Unit {
-        // agent 启动时执行
-    }
-
-    on Stop -> Unit {
-        // agent 停止时执行（清理资源）
-    }
-
-    on Error(err: AgentError) -> ErrorAction {
-        // 错误处理策略
-        Restart  // | Stop | Ignore | Escalate
+    // 无返回值的处理器
+    on Update(x: Int) {
+        field1 = x
     }
 }
 ```
 
-### 11.2 使用 Agent
+### 11.2 入口点与 Agent 使用
+
+没有特殊的 `main()` 函数。任何标记 `#[Application]` 的函数都是有效入口点。
 
 ```axon
-fn main() -> Unit | Async, IO {
-    // 创建 agent（返回 AgentRef<AgentName>）
-    let agent: AgentRef<Counter> = spawn Counter
+#[Application]
+fn serve() -> Unit {
+    // 创建 agent 实例
+    let counter = spawn Counter
 
-    // 发送消息（fire-and-forget）
-    agent.send(Increment)
-    agent.send(Increment)
+    // fire-and-forget
+    counter.send(Increment)
+    counter.send(Increment)
 
-    // 请求响应（ask-response，返回 Future）
-    let count: Int = await agent.ask(GetCount)
-    print("Count: {count}")
+    // request-reply（等待返回值）
+    let n = counter.ask(GetCount)   // => 2
+    print($"Count: {n}")
 
-    // 停止 agent
-    agent.stop()
+    // 并发：向多个 agent 发送并等待全部结果
+    let w1 = spawn Worker
+    let w2 = spawn Worker
+    let results = ask_all([w1, w2], Process(5))
 
-    // 监督树
-    let supervisor = Supervisor.new(
-        strategy: Strategy.OneForOne,
-        children: [
-            Spec.new(Worker1, name: "w1"),
-            Spec.new(Worker2, name: "w2"),
-        ]
-    )
+    // 竞速：返回最快的响应
+    let first = ask_any([w1, w2], Process(2))
 }
+```
+
+```bash
+axon run server.axon            # 自动找到唯一的 #[Application] 函数
+axon run server.axon::serve     # 明确指定入口点
+axon run server.axon --watch    # 热更新模式
 ```
 
 ### 11.3 Agent 监督
@@ -997,55 +1018,103 @@ axon-llm    = "0.5"
 
 ## 13. 热更新
 
-完整说明见 `HOT_RELOAD.md`。
+> 完整说明见 `spec/HOT_RELOAD.md`。权威摘要见 `spec/PRINCIPLES.md` §Hot Reload Model。
 
-### 13.1 基本热更新
+**核心保证：保存文件 → 编译通过 → 运行中系统立即更新。无重启，无状态丢失。**
+
+### 13.1 Supervisor 模型
+
+**Supervisor** 是环境运行时上下文（不是 class，不是库，而是执行环境本身）。它维护：
+- `globalEnv`：所有函数和常量绑定，热更新时原子替换
+- `liveAgents`：所有运行中的 agent 实例
+- `entryPoints`：当前激活的 `#[Application]` 函数集合
+
+文件变更时：
+1. 解析 + 类型检查新版本
+2. **失败** → 报告错误给开发者，运行中系统不变
+3. **通过** → 计算 diff，增量应用（见下表）
+
+### 13.2 差异更新规则
+
+| 变化 | 行为 |
+|------|------|
+| 纯函数体变化 | 替换 `globalEnv` 中的绑定；下次调用使用新版本 |
+| Agent handler 变化 | 向该 agent 类型的所有活跃实例推送新 handler map；状态保留 |
+| Agent state: 新增字段 | 用字段默认值自动初始化所有活跃实例 |
+| Agent state: 字段删除 | 必须提供 `migrate` 声明；否则拒绝 |
+| Agent state: 字段类型变化 | 必须提供 `migrate` 声明；否则拒绝 |
+| 新函数声明 | 添加到 `globalEnv`，立即可用 |
+| 新 agent 类型声明 | 注册到 agent registry；现有 agent 不受影响 |
+| 新顶层 `let`/`const` | 求值并添加到 `globalEnv` |
+| `#[Application]` 函数体变化 | 增量执行：已执行的语句跳过，新语句执行 |
+| `#[Application]` 注解被删除 | **拒绝** — Supervisor 保持入口点存活 |
+| `#[NoHot]` 函数变化 | 热更新时忽略；仅在初始加载时执行一次 |
+
+### 13.3 #[Application] 热更新示例
 
 ```axon
-// 标记模块支持热更新
-#[hot]
-module MyService
+// 版本 1 — 初始加载
+#[Application]
+fn serve() -> Unit {
+    let server = spawn HttpServer     // ← 已执行，Supervisor 记录: server → AgentRef#1
+    server.send(Listen(8080))         // ← 已执行
+}
 
-// 被 #[hot] 标记的模块：
-// 1. 编译器生成热更新接口
-// 2. 运行时注册该模块的热更新钩子
-// 3. 当文件变更时，自动触发增量重编译 + 代码注入
+// 版本 2 — 热更新后
+#[Application]
+fn serve() -> Unit {
+    let server = spawn HttpServer     // ← 跳过：server 已绑定
+    server.send(Listen(8080))         // ← 跳过：已执行
+    let metrics = spawn MetricsAgent  // ← 新增：立即执行
+    metrics.send(Start)               // ← 新增：立即执行
+}
+// 结果：HttpServer 继续运行不中断；MetricsAgent 被加入到活跃系统
 ```
 
-### 13.2 Agent 状态迁移
+### 13.4 #[NoHot] — 禁用热更新
 
 ```axon
-// 当 Agent 的 state 结构变化时，声明如何迁移
-migrate MyAgent.State {
-    from V1 {
-        items: List<Item>
-    }
-    to V2 {
-        items:  List<Item>
-        lookup: Map<ItemId, Item>  // 新增缓存
-    }
-    with |old| {
-        items:  old.items,
-        lookup: old.items |> List.map(|i| (i.id, i)) |> Map.from()
-    }
+#[NoHot]
+fn init_connection_pool() -> Pool | IO {
+    // 建立数据库连接池 — 不能在热更新时重复执行
+    Pool.open(config.database_url, max: 10)
+}
+
+#[Application]
+fn serve() -> Unit {
+    let pool = init_connection_pool()   // 仅执行一次；热更新不会再调用此函数
+    let server = spawn ApiServer
+    server.send(Start(pool))
 }
 ```
 
-### 13.3 热更新 API
+### 13.5 Agent 状态迁移
+
+新增字段（有默认值）自动初始化，无需 migrate：
 
 ```axon
-// 手动触发热更新（通常由构建工具自动触发）
-HotReload.apply(module: "MyService", delta: compiled_delta)
+// 新增 label 字段 — 自动初始化为 "worker"
+agent Worker {
+    state {
+        count: Int    = 0
+        label: String = "worker"   // 热更新后活跃实例自动获得此字段
+    }
+    on Work -> Int      { count = count + 1; count }
+    on Label -> String  { label }
+}
+```
 
-// 监听热更新事件
-HotReload.on_update(|module_name, version| {
-    Log.info("Module {module_name} updated to version {version}")
-})
+结构性变化（字段删除、类型变更）需要显式 `migrate`：
 
-// 暂停/恢复热更新（在维护窗口使用）
-HotReload.pause()
-// ... 批量更新多个模块 ...
-HotReload.resume()
+```axon
+migrate Session.state {
+    from { user_id: Int }
+    to   { user_id: String, logged_in: Bool }
+    with |old| {
+        user_id:   str(old.user_id)
+        logged_in: old.user_id != 0
+    }
+}
 ```
 
 ---
@@ -1109,7 +1178,7 @@ type Analysis = {
 
 fn analyzeText(text: String) -> Result<Analysis, LLMError> | Async, IO {
     LLM.structured::<Analysis>(
-        prompt: "Analyze: {text}",
+        prompt: $"Analyze: {text}",
         model:  Model.Claude3Sonnet
     )
 }

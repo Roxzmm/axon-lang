@@ -99,7 +99,7 @@ fn main() -> Unit {
     let n = c.ask(GetCount)   // => 3
     c.send(Reset)
     let n2 = c.ask(GetCount)  // => 0
-    print("Count was {n}, now {n2}")
+    print($"Count was {n}, now {n2}")
 }
 ```
 
@@ -137,8 +137,8 @@ fn divide(a: Float, b: Float) -> Result<Float, String> {
 
 fn main() -> Unit {
     match divide(10.0, 3.0) {
-        Ok(n)  => print("Result: {n:.2f}")
-        Err(e) => print("Error: {e}")
+        Ok(n)  => print($"Result: {n:.2f}")
+        Err(e) => print($"Error: {e}")
     }
 }
 ```
@@ -195,11 +195,11 @@ let name = "World"
 let n    = 42
 let pi   = 3.14159
 
-print("Hello, {name}!")         // Hello, World!
-print("n = {n}")                // n = 42
-print("pi ≈ {pi:.2f}")         // pi ≈ 3.14
-print("hex: {n:x}")             // hex: 2a
-print("padded: {n:>8}")         // padded:       42
+print($"Hello, {name}!")        // Hello, World!
+print($"n = {n}")               // n = 42
+print($"pi ≈ {pi:.2f}")        // pi ≈ 3.14
+print($"hex: {n:x}")            // hex: 2a
+print($"padded: {n:>8}")        // padded:       42
 ```
 
 ### Multi-Agent Orchestration
@@ -257,7 +257,7 @@ Mark functions with `#[tool]` to register them for LLM tool-use dispatch:
 #[tool("Search the web and return a summary")]
 fn web_search(query: String, max_results: Int) -> String | IO {
     // ... implementation
-    "results for: {query}"
+    $"results for: {query}"
 }
 
 fn main() -> Unit {
@@ -309,28 +309,33 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 
 These are honest descriptions of current limitations, and why they exist.
 
-### 1. `{` in String Literals Triggers Interpolation
+### 1. `$"..."` Interpolation Not Yet in Interpreter
+
+The spec defines `$"Hello {name}"` as the string interpolation syntax (C#-style `$` prefix). Regular strings `"..."` have no interpolation — `{` is a literal character.
+
+The current interpreter prototype still uses the old syntax: any `"..."` string treats `{` as the start of an interpolation expression.
 
 ```axon
-// This FAILS — { triggers interpolation
-let s = "{"
+// Spec (target):    $"Hello, {name}!"   — interpolated
+//                   "Hello, {name}!"    — literal text, no interpolation
 
-// Workaround: build structured strings with json_stringify
-let obj = map_insert(map_empty(), "key", "value")
-let s   = json_stringify(obj)   // ✅ works
+// Current interpreter behavior:
+// "Hello, {name}!"  — still interpolated (old behavior)
 ```
 
-**Why**: The lexer treats `{` in any string context as the start of an interpolation block. There is no escape sequence yet (`\{` would fix this). Changing the interpolation delimiter to `${}` would be a breaking change; adding `\{` is the minimal fix.
+**Why**: Breaking change that requires updating the lexer. Straightforward to implement — it's next on the lexer task list.
 
-**Status**: Will be fixed. Workaround exists for all practical cases.
+**Status**: The examples in `examples/` use the old syntax and pass all 25 tests. They will be updated when the interpreter implements `$"..."`.
+
+**Workaround**: None needed for current code. For new spec-compliant code, use `$"..."` — the interpreter upgrade will make it work.
 
 ### 2. Hot Reload is File-Restart, Not True Live Patch
 
 `axon run --watch` re-executes the entire program on file change. This works for stateless scripts but loses agent state.
 
-**Why**: True hot reload requires surgically patching running agent handler maps without re-running `main()`. The correct implementation (Erlang/OTP model) is planned but not yet done.
+**Why**: True hot reload requires the Supervisor to surgically patch running agent handler maps without re-running `#[Application]` entry points. The correct implementation (Erlang/OTP model) is specified in `spec/HOT_RELOAD.md` but not yet implemented.
 
-**Goal**: Save file → compiler accepts → running agents receive updated handlers, state preserved. No restart. No intermediate state.
+**Goal**: Save file → compiler accepts → running agents receive updated handlers, state preserved. No restart. No state loss.
 
 ### 3. Concurrency is Cooperative, Not Parallel
 
@@ -409,10 +414,10 @@ for f in tests/axon/*.axon; do node dist/main.js run "$f"; done
 See [NEXT_PHASE_PLAN_V2.md](NEXT_PHASE_PLAN_V2.md) for the full plan. Current priorities:
 
 1. **Generics** — `List<T>`, `Option<T>`, `Result<T, E>` with real type parameters
-2. **True hot reload** — patch running agent handlers without restart or state loss
-3. **`\{` escape** — fix string literal `{` collision with interpolation
+2. **True hot reload** — Supervisor model: patch running agent handlers, no restart, no state loss
+3. **`$"..."` interpolation** — implement the new interpolation syntax in the lexer, update all examples
 4. **OS-thread agents** — `worker_threads` backend for true parallelism
-5. **`main()` implicit `| IO`** — make strict-effects the default, not opt-in
+5. **`#[Application]` in interpreter** — `axon run` recognizes `#[Application]` as entry point
 
 ---
 
