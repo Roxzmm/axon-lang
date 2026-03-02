@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 25 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 26 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -290,8 +290,9 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | ask_all / ask_any (concurrent) | ✅ Complete |
 | ADTs + exhaustive pattern match | ✅ Complete |
 | Closures + higher-order functions | ✅ Complete |
-| String interpolation + format specs | ✅ Complete |
+| `$"..."` string interpolation + format specs | ✅ Complete |
 | Named arguments + default params | ✅ Complete |
+| `#[Application]` entry point | ✅ Complete |
 | JSON stdlib | ✅ Complete |
 | File IO, env vars, HTTP | ✅ Complete |
 | `#[tool]` annotation + tool_call | ✅ Complete |
@@ -399,7 +400,6 @@ See [NEXT_PHASE_PLAN_V2.md](NEXT_PHASE_PLAN_V2.md) for the full plan. Current pr
 1. **Generics** — `List<T>`, `Option<T>`, `Result<T, E>` with real type parameters
 2. **True hot reload** — Supervisor model: patch running agent handlers, no restart, no state loss
 3. **OS-thread agents** — `worker_threads` backend for true parallelism
-4. **`#[Application]` in interpreter** — `axon run` recognizes `#[Application]` as entry point
 
 ---
 
