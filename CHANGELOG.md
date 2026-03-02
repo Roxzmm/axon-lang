@@ -9,6 +9,17 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.2] - 2026-03-02
+
+### Interpreter
+- Implemented `#[Application]` as entry point — `axon run` now uses `#[Application]`-annotated
+  function as the program entry point; `main()` remains as fallback for backward compatibility
+- `#[Application]` takes priority over `main()` when both are present in a file
+- Module files loaded via `use` never run their entry points (both `#[Application]` and `main`)
+- Added test 26: `26_application_annotation.axon`
+
+---
+
 ## [0.2.1] - 2026-03-02
 
 ### Interpreter

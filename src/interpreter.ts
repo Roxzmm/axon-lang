@@ -358,7 +358,7 @@ export class Interpreter {
 
   // ── Execute Program ───────────────────────────────────────
 
-  async execute(program: Program, filePath?: string): Promise<void> {
+  async execute(program: Program, filePath?: string, runEntryPoint = true): Promise<void> {
     const prevFile = this.currentFile;
     if (filePath) this.currentFile = filePath;
 
@@ -371,23 +371,33 @@ export class Interpreter {
       }
     }
 
-    // Second pass: evaluate initializers and find main
+    // Second pass: evaluate initializers and find entry point
+    // Priority: #[Application] annotation > function named 'main'
     let mainFn: AxonValue | undefined;
+    let applicationFn: AxonValue | undefined;
     for (const item of program.items) {
       if (item.kind === 'ConstDecl') {
         const val = await this.evalExpr(item.value, this.globalEnv);
         this.globalEnv.define(item.name, val);
       }
-      if (item.kind === 'FnDecl' && item.name === 'main') {
-        mainFn = this.globalEnv.tryGet('main');
+      if (item.kind === 'FnDecl') {
+        if (item.annots.some(a => a === 'Application' || a.startsWith('Application('))) {
+          applicationFn = this.globalEnv.tryGet(item.name);
+        }
+        if (item.name === 'main') {
+          mainFn = this.globalEnv.tryGet('main');
+        }
       }
     }
 
     this.currentFile = prevFile;
 
-    // Run main if present
-    if (mainFn) {
-      await this.callValueAsync(mainFn, []);
+    // Run entry point: #[Application] takes priority over main()
+    if (runEntryPoint) {
+      const entryFn = applicationFn ?? mainFn;
+      if (entryFn) {
+        await this.callValueAsync(entryFn, []);
+      }
     }
   }
 
@@ -434,7 +444,7 @@ export class Interpreter {
       // Share registries
       modInterpreter.typeRegistry = this.typeRegistry;
       modInterpreter.agentDeclRegistry = this.agentDeclRegistry;
-      await modInterpreter.execute(modProgram, resolved);
+      await modInterpreter.execute(modProgram, resolved, false); // don't run entry point in modules
 
       // Collect exported (pub) definitions
       const exports = new Environment();

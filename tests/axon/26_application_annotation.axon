@@ -1,0 +1,22 @@
+// ============================================================
+// Test: #[Application] annotation as entry point
+// ============================================================
+module Tests.ApplicationAnnotation
+
+fn helper(x: Int) -> Int {
+    x * 2
+}
+
+// Ordinary function — NOT the entry point
+fn main() -> Unit {
+    // If #[Application] works correctly, this should NOT be called
+    // because #[Application] takes priority over main()
+    print("FAIL: main() was called instead of #[Application]")
+}
+
+#[Application]
+fn run() -> Unit {
+    let result = helper(21)
+    assert_eq(result, 42, "#[Application] entry called correctly")
+    print("PASS: application_annotation")
+}
