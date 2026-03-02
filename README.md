@@ -429,4 +429,10 @@ The test suite in `tests/axon/` is the best current documentation of what actual
 
 ---
 
+## Author
+
+**[Roxzmm](https://github.com/Roxzmm)**
+
+---
+
 *Axon — compile success is a safety guarantee. Safety is a deployment permission.*
