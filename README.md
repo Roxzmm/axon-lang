@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 31 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 32 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -305,6 +305,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | `loop` expression + range literals (`1..=5`, `0..n`) | ✅ Complete |
 | Record update (`expr with { field: val }`) | ✅ Complete |
 | `if let` / `while let` pattern binding | ✅ Complete |
+| `impl` blocks (methods on types, chaining) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 

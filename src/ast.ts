@@ -203,6 +203,13 @@ export interface MigrateDecl {
   span:       Span;
 }
 
+export interface ImplDecl {
+  kind:       'ImplDecl';
+  typeName:   string;
+  methods:    FnDecl[];
+  span:       Span;
+}
+
 export type TopLevel =
   | ModuleDecl
   | UseDecl
@@ -210,7 +217,8 @@ export type TopLevel =
   | TypeDecl
   | AgentDecl
   | ConstDecl
-  | MigrateDecl;
+  | MigrateDecl
+  | ImplDecl;
 
 export interface Program {
   module:   ModuleDecl | null;

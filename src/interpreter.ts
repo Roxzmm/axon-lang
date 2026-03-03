@@ -3,7 +3,7 @@
 // ============================================================
 
 import type {
-  Program, TopLevel, FnDecl, TypeDecl, AgentDecl, ConstDecl,
+  Program, TopLevel, FnDecl, TypeDecl, AgentDecl, ConstDecl, ImplDecl,
   Expr, Stmt, Pattern, LitExpr, MatchArm, CallArg, Param,
   TypeVariant, TypeVariantField, StateField, AgentHandler,
 } from './ast';
@@ -73,6 +73,8 @@ export class Interpreter {
   public  globalEnv: Environment;
   private typeRegistry = new Map<string, TypeInfo>();
   private agentDeclRegistry = new Map<string, AgentDecl>();
+  // impl blocks: typeName → methodName → fn value
+  private methodRegistry = new Map<string, Map<string, AxonValue>>();
   private moduleRegistry = new ModuleRegistry();
   private builtinNames = new Set<string>();
   // Module system: maps resolved module path → exported env
@@ -559,6 +561,8 @@ export class Interpreter {
       } else if (item.kind === 'ConstDecl') {
         const val = await this.evalExpr(item.value, this.globalEnv);
         this.globalEnv.define(item.name, val, true);
+      } else if (item.kind === 'ImplDecl') {
+        this.registerImpl(item);
       }
     }
 
@@ -621,6 +625,26 @@ export class Interpreter {
     if (item.kind === 'FnDecl')    this.registerFn(item);
     if (item.kind === 'TypeDecl')  this.registerType(item);
     if (item.kind === 'AgentDecl') this.registerAgent(item);
+    if (item.kind === 'ImplDecl')  this.registerImpl(item);
+  }
+
+  private registerImpl(decl: ImplDecl): void {
+    if (!this.methodRegistry.has(decl.typeName)) {
+      this.methodRegistry.set(decl.typeName, new Map());
+    }
+    const methods = this.methodRegistry.get(decl.typeName)!;
+    for (const method of decl.methods) {
+      if (method.body === null) continue;
+      const fnVal: AxonValue = {
+        tag: ValueTag.Function,
+        name: `${decl.typeName}::${method.name}`,
+        params: method.params,
+        body: method.body,
+        closure: this.globalEnv,
+        isRecursive: true,
+      };
+      methods.set(method.name, fnVal);
+    }
   }
 
   private registerFn(decl: FnDecl): void {
@@ -1567,7 +1591,19 @@ export class Interpreter {
       if (strFn) return this.callValueAsync(strFn, [obj, ...args]);
     }
 
-    // Generic methods
+    // impl block method lookup: user-defined methods take priority over generic defaults
+    const typeName = obj.tag === ValueTag.Record ? obj.typeName
+                   : obj.tag === ValueTag.Enum   ? obj.typeName
+                   : null;
+    if (typeName) {
+      const implMethods = this.methodRegistry.get(typeName);
+      if (implMethods) {
+        const implFn = implMethods.get(method);
+        if (implFn) return this.callValueAsync(implFn, [obj, ...args]);
+      }
+    }
+
+    // Generic built-in methods (fallback defaults)
     if (method === 'len' || method === 'length') {
       if (obj.tag === ValueTag.String) return mkInt(obj.value.length);
       if (obj.tag === ValueTag.List)   return mkInt(obj.items.length);

@@ -9,6 +9,29 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.8] - 2026-03-03
+
+### Parser
+- `impl TypeName { fn method(self, ...) -> T { ... } }` — method definitions on named types
+- Methods parsed as regular `FnDecl` inside the impl block; `pub` visibility supported per method
+
+### Interpreter
+- `methodRegistry: Map<typeName, Map<methodName, AxonValue>>` stores impl methods
+- Dispatch priority: agent ops > record field callable > `methodDispatchName` > String methods > **impl methods** > generic defaults (`len`, `to_string`, etc.) > free function fallback
+- impl methods receive `obj` as first argument (bound to `self` param)
+- Method chaining works: each method returns a new value of the same type; dispatch is via the returned value's `typeName`
+- Hot reload: `ImplDecl` re-registers methods (old methods overwritten, new ones added)
+- `registerImpl()` also called from `registerTopLevel()` so REPL can define impl blocks
+
+### Type Checker
+- `checkTopLevel()` handles `ImplDecl`: type-checks each method body via `checkFn()`
+- Methods are NOT registered as global names (they are dispatched by typeName, not identifier)
+
+### Tests
+- Added test 32: `32_impl_methods.axon` — Point.distance/scale/translate/magnitude/to_str, method chaining, Rect.area/perimeter/contains; all 32 tests pass
+
+---
+
 ## [0.2.7] - 2026-03-03
 
 ### Parser

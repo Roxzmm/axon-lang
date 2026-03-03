@@ -5,7 +5,7 @@
 // Catches common errors without full HM inference.
 
 import type {
-  Program, TopLevel, FnDecl, TypeDecl, AgentDecl,
+  Program, TopLevel, FnDecl, TypeDecl, AgentDecl, ImplDecl,
   TypeExpr, Expr, Stmt, Pattern, Param, AgentHandler,
   MatchArm, StateField,
 } from './ast';
@@ -335,6 +335,7 @@ export class TypeChecker {
       case 'FnDecl':    this.checkFn(item); break;
       case 'AgentDecl': this.checkAgent(item); break;
       case 'ConstDecl': this.checkExpr(item.value, this.typeEnv); break;
+      case 'ImplDecl':  for (const m of item.methods) this.checkFn(m); break;
     }
   }
 

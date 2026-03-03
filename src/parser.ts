@@ -5,7 +5,7 @@
 import { Token, TokenKind, Lexer } from './lexer';
 import type {
   Program, TopLevel, ModuleDecl, UseDecl, FnDecl, TypeDecl, AgentDecl,
-  ConstDecl, MigrateDecl, TypeExpr, Pattern, Expr, Stmt, Param,
+  ConstDecl, MigrateDecl, ImplDecl, TypeExpr, Pattern, Expr, Stmt, Param,
   LitExpr, MatchArm, CallArg, TypeDef, TypeVariant, StateField,
   AgentHandler, Span, TypeVariantField,
 } from './ast';
@@ -71,6 +71,7 @@ export class Parser {
     if (this.check(TokenKind.KwUse))    return this.parseUseDecl();
     if (this.check(TokenKind.KwMigrate)) return this.parseMigrateDecl();
     if (this.check(TokenKind.KwModule)) return this.parseModuleDecl();
+    if (this.check(TokenKind.KwImpl))   return this.parseImplDecl();
 
     throw this.error(`Unexpected token at top level: ${this.cur().value}`);
   }
@@ -511,6 +512,22 @@ export class Parser {
 
     this.expect(TokenKind.RBrace);
     return { kind: 'MigrateDecl', agentPath, fromFields, toFields, transform, span };
+  }
+
+  private parseImplDecl(): ImplDecl {
+    const span = this.span();
+    this.expect(TokenKind.KwImpl);
+    const typeName = this.expectIdent();
+    this.expect(TokenKind.LBrace);
+    const methods: FnDecl[] = [];
+    while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
+      const annots = this.parseAnnotations();
+      let vis: 'pub' | 'priv' | 'internal' = 'priv';
+      if (this.check(TokenKind.KwPub)) { this.advance(); vis = 'pub'; }
+      methods.push(this.parseFnDecl(vis, annots));
+    }
+    this.expect(TokenKind.RBrace);
+    return { kind: 'ImplDecl', typeName, methods, span };
   }
 
   // ── Types ───────────────────────────────────────────────

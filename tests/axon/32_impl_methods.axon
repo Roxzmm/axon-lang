@@ -1,0 +1,92 @@
+module Test
+
+type Point { x: Float, y: Float }
+type Rect { x: Float, y: Float, w: Float, h: Float }
+type Stack { items: List<Int> }
+
+impl Point {
+    fn distance(self, other: Point) -> Float {
+        let dx = self.x - other.x
+        let dy = self.y - other.y
+        sqrt(dx * dx + dy * dy)
+    }
+
+    fn scale(self, factor: Float) -> Point {
+        Point { x: self.x * factor, y: self.y * factor }
+    }
+
+    fn translate(self, dx: Float, dy: Float) -> Point {
+        Point { x: self.x + dx, y: self.y + dy }
+    }
+
+    fn magnitude(self) -> Float {
+        sqrt(self.x * self.x + self.y * self.y)
+    }
+
+    fn to_str(self) -> String {
+        $"({self.x}, {self.y})"
+    }
+}
+
+impl Rect {
+    fn area(self) -> Float {
+        self.w * self.h
+    }
+
+    fn perimeter(self) -> Float {
+        2.0 * (self.w + self.h)
+    }
+
+    fn contains(self, p: Point) -> Bool {
+        p.x >= self.x && p.x <= self.x + self.w &&
+        p.y >= self.y && p.y <= self.y + self.h
+    }
+}
+
+fn main() -> Unit {
+    // --- Point methods ---
+
+    let p1 = Point { x: 0.0, y: 0.0 }
+    let p2 = Point { x: 3.0, y: 4.0 }
+
+    let d = p1.distance(p2)
+    assert_eq(d, 5.0, "distance 3-4-5 triangle")
+
+    let mag = p2.magnitude()
+    assert_eq(mag, 5.0, "magnitude")
+
+    let p3 = p2.scale(2.0)
+    assert_eq(p3.x, 6.0, "scale x")
+    assert_eq(p3.y, 8.0, "scale y")
+
+    let p4 = p2.translate(1.0, -1.0)
+    assert_eq(p4.x, 4.0, "translate x")
+    assert_eq(p4.y, 3.0, "translate y")
+
+    let s = p2.to_str()
+    assert_eq(s, "(3.0, 4.0)", "to_str")
+
+    // Method chaining
+    let p5 = Point { x: 1.0, y: 0.0 }
+        .scale(3.0)
+        .translate(0.0, 4.0)
+    assert_eq(p5.x, 3.0, "chain scale x")
+    assert_eq(p5.y, 4.0, "chain translate y")
+    assert_eq(p5.magnitude(), 5.0, "chain magnitude")
+
+    // --- Rect methods ---
+
+    let r = Rect { x: 0.0, y: 0.0, w: 4.0, h: 3.0 }
+    assert_eq(r.area(), 12.0, "area")
+    assert_eq(r.perimeter(), 14.0, "perimeter")
+
+    let inside = Point { x: 2.0, y: 1.5 }
+    let outside = Point { x: 5.0, y: 1.5 }
+    assert(r.contains(inside), "inside point")
+    assert(!r.contains(outside), "outside point")
+
+    // --- Methods on enum values ---
+    // (impl works on enum type names too)
+
+    print("PASS")
+}
