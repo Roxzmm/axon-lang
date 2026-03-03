@@ -184,11 +184,14 @@ export class TypeChecker {
       'list_unique', 'list_enumerate', 'list_range', 'list_range_inclusive', 'list_sort',
       'list_any', 'list_all', 'list_find', 'list_map', 'list_filter', 'list_fold',
       'list_reduce', 'list_flat_map', 'list_zip', 'list_group_by', 'list_chunk',
+      'list_index_of', 'list_min', 'list_max', 'list_product', 'list_sorted',
+      'list_count', 'list_partition', 'list_sum_by',
       // String operations (complete)
       'upper', 'lower', 'trim', 'trim_start', 'trim_end', 'split', 'join',
       'contains', 'starts_with', 'ends_with', 'replace', 'slice', 'char_at',
       'chars', 'bytes', 'parse_int', 'parse_float', 'format', 'repeat',
       'pad_left', 'pad_right', 'index_of', 'lines',
+      'string_find', 'string_pad_start', 'string_pad_end', 'string_count',
       // Option operations
       'option_is_some', 'option_is_none', 'option_unwrap', 'option_unwrap_or',
       'option_ok_or', 'option_map', 'option_and_then',
@@ -200,7 +203,7 @@ export class TypeChecker {
       'map_len', 'map_is_empty', 'map_keys', 'map_values', 'map_entries',
       // Math (complete)
       'sqrt', 'pow', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'clamp',
-      'log', 'log2', 'exp', 'sin', 'cos', 'tan',
+      'log', 'log2', 'exp', 'sin', 'cos', 'tan', 'sign', 'trunc', 'fract',
       // Tuple operations
       'tuple_get', 'tuple_len',
       // Compare / random / misc

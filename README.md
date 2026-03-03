@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 32 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 33 tests pass.**
 
 | Feature | Status |
 |---------|--------|

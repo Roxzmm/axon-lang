@@ -1,0 +1,80 @@
+module Test
+
+fn main() -> Unit {
+    // --- list_index_of ---
+    let nums = [10, 20, 30, 20, 40]
+    assert_eq(option_unwrap(list_index_of(nums, 20)), 1, "index_of first match")
+    assert(option_is_none(list_index_of(nums, 99)), "index_of not found")
+
+    // --- list_min / list_max ---
+    let vals = [3, 1, 4, 1, 5, 9, 2, 6]
+    assert_eq(option_unwrap(list_min(vals)), 1, "list_min")
+    assert_eq(option_unwrap(list_max(vals)), 9, "list_max")
+    assert(option_is_none(list_min([])), "list_min empty")
+
+    // --- list_product ---
+    assert_eq(list_product([1, 2, 3, 4, 5]), 120, "list_product")
+    assert_eq(list_product([]), 1, "list_product empty is 1")
+
+    // --- list_sorted ---
+    let unsorted = [5, 3, 8, 1, 9, 2]
+    let sorted = list_sorted(unsorted)
+    assert_eq(option_unwrap(list_get(sorted, 0)), 1, "sorted[0]=1")
+    assert_eq(option_unwrap(list_get(sorted, 5)), 9, "sorted[5]=9")
+    // original unchanged
+    assert_eq(option_unwrap(list_get(unsorted, 0)), 5, "original unmodified")
+
+    // --- list_count (higher-order) ---
+    let evens = list_count([1, 2, 3, 4, 5, 6], |n| n % 2 == 0)
+    assert_eq(evens, 3, "list_count evens")
+
+    // --- list_partition (higher-order) ---
+    let (yes, no) = list_partition([1, 2, 3, 4, 5, 6], |n| n % 2 == 0)
+    assert_eq(list_len(yes), 3, "partition: even count")
+    assert_eq(list_len(no), 3, "partition: odd count")
+    assert_eq(option_unwrap(list_get(yes, 0)), 2, "partition: first even=2")
+    assert_eq(option_unwrap(list_get(no, 0)), 1, "partition: first odd=1")
+
+    // --- list_sum_by (higher-order) ---
+    let total = list_sum_by([1, 2, 3, 4, 5], |n| n * n)
+    assert_eq(total, 55, "sum_by squares 1+4+9+16+25=55")
+
+    // --- list_group_by (higher-order) ---
+    let words = ["apple", "avocado", "banana", "blueberry", "cherry"]
+    let grouped = list_group_by(words, |w| slice(w, 0, 1))
+    let a_group = option_unwrap(map_get(grouped, "a"))
+    assert_eq(list_len(a_group), 2, "group_by 'a' has 2 items")
+
+    // --- string_find ---
+    let s = "hello world"
+    assert_eq(option_unwrap(string_find(s, "world")), 6, "string_find found")
+    assert(option_is_none(string_find(s, "xyz")), "string_find not found")
+
+    // --- string_pad_start / string_pad_end ---
+    assert_eq(string_pad_start("42", 5, "0"), "00042", "pad_start with 0")
+    assert_eq(string_pad_end("hi", 5, "."), "hi...", "pad_end with dot")
+    assert_eq(string_pad_start("hello", 3, " "), "hello", "pad_start no-op when wider")
+
+    // --- string_count ---
+    assert_eq(string_count("banana", "an"), 2, "string_count 'an' in 'banana'")
+    assert_eq(string_count("hello", "x"), 0, "string_count not found")
+
+    // --- random ---
+    let r = random()
+    assert(r >= 0.0, "random >= 0")
+    assert(r < 1.0, "random < 1")
+
+    // --- random_int ---
+    let ri = random_int(0, 100)
+    assert(ri >= 0, "random_int >= 0")
+    assert(ri < 100, "random_int < 100")
+
+    // --- sign, trunc, fract ---
+    assert_eq(sign(-5), -1, "sign negative")
+    assert_eq(sign(0), 0, "sign zero")
+    assert_eq(sign(7), 1, "sign positive")
+    assert_eq(trunc(3.7), 3, "trunc positive")
+    assert_eq(trunc(-2.9), -2, "trunc negative")
+
+    print("PASS")
+}

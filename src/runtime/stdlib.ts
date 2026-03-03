@@ -123,8 +123,20 @@ const mathFns: Record<string, NativeFn> = {
   sin:   (v) => mkFloat(Math.sin(toNum(v, 'sin'))),
   cos:   (v) => mkFloat(Math.cos(toNum(v, 'cos'))),
   tan:   (v) => mkFloat(Math.tan(toNum(v, 'tan'))),
-  PI:    ()  => mkFloat(Math.PI),
-  E:     ()  => mkFloat(Math.E),
+  PI:        ()  => mkFloat(Math.PI),
+  E:         ()  => mkFloat(Math.E),
+  random:    ()  => mkFloat(Math.random()),
+  random_int: (lo, hi) => {
+    const l = Number(asAny(lo).value), h = Number(asAny(hi).value);
+    return mkInt(Math.floor(Math.random() * (h - l)) + l);
+  },
+  sign: (v) => {
+    if (v.tag === ValueTag.Int)   return mkInt(v.value > 0n ? 1n : v.value < 0n ? -1n : 0n);
+    if (v.tag === ValueTag.Float) return mkFloat(Math.sign(v.value));
+    throw new RuntimeError(`sign: expected number`);
+  },
+  trunc: (v) => mkInt(Math.trunc(toNum(v, 'trunc'))),
+  fract: (v) => { const n = toNum(v, 'fract'); return mkFloat(n - Math.trunc(n)); },
 };
 
 // ─── String operations ───────────────────────────────────────
@@ -176,6 +188,29 @@ const stringFns: Record<string, NativeFn> = {
   },
   repeat:     (v, n) => mkString(asStr(v, 'repeat').repeat(Number(asAny(n).value))),
   lines:      (v) => mkList(asStr(v, 'lines').split('\n').map(mkString)),
+  string_find: (v, sub) => {
+    const idx = asStr(v, 'string_find').indexOf(asStr(sub, 'string_find'));
+    return idx >= 0 ? mkSome(mkInt(idx)) : mkNone();
+  },
+  string_pad_start: (v, width, fill) => {
+    const s = asStr(v, 'string_pad_start');
+    const w = Number(asAny(width).value);
+    const f = fill ? asStr(fill, 'string_pad_start') : ' ';
+    return mkString(s.padStart(w, f));
+  },
+  string_pad_end: (v, width, fill) => {
+    const s = asStr(v, 'string_pad_end');
+    const w = Number(asAny(width).value);
+    const f = fill ? asStr(fill, 'string_pad_end') : ' ';
+    return mkString(s.padEnd(w, f));
+  },
+  string_count: (v, sub) => {
+    const s = asStr(v, 'string_count'), ss = asStr(sub, 'string_count');
+    if (ss.length === 0) return mkInt(s.length + 1);
+    let count = 0, pos = 0;
+    while ((pos = s.indexOf(ss, pos)) >= 0) { count++; pos += ss.length; }
+    return mkInt(count);
+  },
 };
 
 // ─── List operations ─────────────────────────────────────────
@@ -235,6 +270,28 @@ const listFns: Record<string, NativeFn> = {
     const s = Number((start as any)?.value ?? 0n);
     return mkList(items.slice(s));
   },
+  list_index_of: (v, item) => {
+    const it = asList(v, 'index_of');
+    const idx = it.findIndex(i => valuesEqual(i, item));
+    return idx >= 0 ? mkSome(mkInt(idx)) : mkNone();
+  },
+  list_min: (v) => {
+    const it = asList(v, 'min');
+    if (it.length === 0) return mkNone();
+    return mkSome(it.reduce((a, b) => compareValues(a, b) <= 0 ? a : b));
+  },
+  list_max: (v) => {
+    const it = asList(v, 'max');
+    if (it.length === 0) return mkNone();
+    return mkSome(it.reduce((a, b) => compareValues(a, b) >= 0 ? a : b));
+  },
+  list_product: (v) => {
+    const it = asList(v, 'product');
+    if (it.length === 0) return mkInt(1n);
+    if (it[0].tag === ValueTag.Float) return mkFloat(it.reduce((s, i) => s * toNum(i, 'product'), 1));
+    return mkInt(it.reduce((s, i) => s * asAny(i).value, 1n));
+  },
+  list_sorted: (v) => mkList([...asList(v, 'sorted')].sort(compareValues)),
   // Tuple operations
   tuple_get: (t, i) => {
     if (t.tag !== ValueTag.Tuple) throw new RuntimeError('tuple_get: expected tuple');

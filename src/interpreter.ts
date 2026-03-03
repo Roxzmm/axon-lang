@@ -189,6 +189,48 @@ export class Interpreter {
       }
       return mkList(result);
     }));
+    this.globalEnv.define('list_count', mkNativeAsync('list_count', async (list, fn) => {
+      if (list.tag !== ValueTag.List) throw new RuntimeError('list_count: expected list');
+      let count = 0n;
+      for (const item of list.items) {
+        const r = await call(fn, [item]);
+        if (r.tag === ValueTag.Bool && r.value) count++;
+      }
+      return mkInt(count);
+    }));
+    this.globalEnv.define('list_partition', mkNativeAsync('list_partition', async (list, fn) => {
+      if (list.tag !== ValueTag.List) throw new RuntimeError('list_partition: expected list');
+      const yes: AxonValue[] = [], no: AxonValue[] = [];
+      for (const item of list.items) {
+        const r = await call(fn, [item]);
+        if (r.tag === ValueTag.Bool && r.value) yes.push(item); else no.push(item);
+      }
+      return mkTuple([mkList(yes), mkList(no)]);
+    }));
+    this.globalEnv.define('list_group_by', mkNativeAsync('list_group_by', async (list, fn) => {
+      if (list.tag !== ValueTag.List) throw new RuntimeError('list_group_by: expected list');
+      const groups = new Map<string, AxonValue[]>();
+      const keyVals = new Map<string, AxonValue>();
+      for (const item of list.items) {
+        const key = await call(fn, [item]);
+        const k = displayValue(key);
+        if (!groups.has(k)) { groups.set(k, []); keyVals.set(k, key); }
+        groups.get(k)!.push(item);
+      }
+      const fields = new Map<string, AxonValue>();
+      for (const [k, items] of groups) fields.set(k, mkList(items));
+      return { tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue;
+    }));
+    this.globalEnv.define('list_sum_by', mkNativeAsync('list_sum_by', async (list, fn) => {
+      if (list.tag !== ValueTag.List) throw new RuntimeError('list_sum_by: expected list');
+      let sumI = 0n, sumF = 0, isFloat = false;
+      for (const item of list.items) {
+        const r = await call(fn, [item]);
+        if (r.tag === ValueTag.Float) { isFloat = true; sumF += r.value; }
+        else if (r.tag === ValueTag.Int) { sumI += r.value; sumF += Number(r.value); }
+      }
+      return isFloat ? mkFloat(sumF) : mkInt(sumI);
+    }));
     this.globalEnv.define('result_map', mkNativeAsync('result_map', async (result, fn) => {
       if (result.tag === ValueTag.Enum && result.variant === 'Ok')
         return mkOk(await call(fn, [result.fields[0]]));

@@ -9,6 +9,39 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.9] - 2026-03-03
+
+### Standard Library
+
+#### List (new functions)
+- `list_index_of(list, item) -> Option<Int>` — first index of matching item
+- `list_min(list) -> Option<T>` — minimum value (None for empty)
+- `list_max(list) -> Option<T>` — maximum value (None for empty)
+- `list_product(list) -> Int|Float` — product of all elements (1 for empty)
+- `list_sorted(list) -> List` — sorted copy using default ordering
+- `list_count(list, pred) -> Int` — count elements matching predicate
+- `list_partition(list, pred) -> (List, List)` — split into (matching, non-matching)
+- `list_sum_by(list, fn) -> Int|Float` — sum after applying extractor function
+- `list_group_by(list, fn) -> Map` — group elements by key function result
+
+#### String (new functions)
+- `string_find(s, sub) -> Option<Int>` — first index of substring
+- `string_pad_start(s, width, fill) -> String` — left-pad to width
+- `string_pad_end(s, width, fill) -> String` — right-pad to width
+- `string_count(s, sub) -> Int` — count non-overlapping occurrences
+
+#### Math (new functions)
+- `random() -> Float` — uniform random in [0, 1)
+- `random_int(lo, hi) -> Int` — random integer in [lo, hi)
+- `sign(n) -> Int|Float` — sign of a number (-1, 0, 1)
+- `trunc(n) -> Int` — truncate toward zero
+- `fract(n) -> Float` — fractional part
+
+### Tests
+- Added test 33: `33_stdlib_expanded.axon` — covers all new functions; all 33 tests pass
+
+---
+
 ## [0.2.8] - 2026-03-03
 
 ### Parser
