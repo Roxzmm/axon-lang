@@ -960,6 +960,19 @@ export class Interpreter {
 
       case 'TypeAscription': return this.evalExpr(expr.expr, env);
 
+      case 'IfLet': {
+        const val = await this.evalExpr(expr.value, env);
+        const bindings = new Map<string, AxonValue>();
+        if (this.matchPattern(expr.pat, val, bindings)) {
+          const letEnv = env.child();
+          for (const [k, v] of bindings) letEnv.define(k, v);
+          return this.evalExpr(expr.then, letEnv);
+        } else if (expr.else_) {
+          return this.evalExpr(expr.else_, env);
+        }
+        return UNIT;
+      }
+
       case 'Loop': {
         while (true) {
           try {
@@ -1277,6 +1290,24 @@ export class Interpreter {
           if (cond.tag === ValueTag.Bool && !cond.value) break;
           try {
             await this.evalExpr(stmt.body, env);
+          } catch (e) {
+            if (e instanceof BreakSignal)    break;
+            if (e instanceof ContinueSignal) continue;
+            throw e;
+          }
+        }
+        break;
+      }
+
+      case 'WhileLetStmt': {
+        while (true) {
+          const val = await this.evalExpr(stmt.value, env);
+          const bindings = new Map<string, AxonValue>();
+          if (!this.matchPattern(stmt.pat, val, bindings)) break;
+          const loopEnv = env.child();
+          for (const [k, v] of bindings) loopEnv.define(k, v);
+          try {
+            await this.evalExpr(stmt.body, loopEnv);
           } catch (e) {
             if (e instanceof BreakSignal)    break;
             if (e instanceof ContinueSignal) continue;

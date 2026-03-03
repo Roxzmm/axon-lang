@@ -1,0 +1,101 @@
+module Test
+
+type Shape {
+    Circle(Float)
+    Rect(Float, Float)
+}
+
+fn main() -> Unit {
+    // --- if let with Option ---
+
+    let some_val: Option<Int> = Some(42)
+    let none_val: Option<Int> = None
+
+    if let Some(x) = some_val {
+        assert_eq(x, 42, "if let Some binds value")
+    }
+
+    let got_none = if let Some(y) = none_val {
+        y
+    } else {
+        -1
+    }
+    assert_eq(got_none, -1, "if let None falls to else")
+
+    // if let as expression returning value
+    let msg = if let Some(n) = some_val {
+        $"got {n}"
+    } else {
+        "nothing"
+    }
+    assert_eq(msg, "got 42", "if let expr value")
+
+    // --- if let with Result ---
+
+    let ok_r: Result<String, String> = Ok("hello")
+    let err_r: Result<String, String> = Err("oops")
+
+    if let Ok(s) = ok_r {
+        assert_eq(s, "hello", "if let Ok binds string")
+    }
+
+    let caught = if let Err(e) = err_r {
+        e
+    } else {
+        "no error"
+    }
+    assert_eq(caught, "oops", "if let Err binds error message")
+
+    // --- if let with ADT ---
+
+    let shape1: Shape = Circle(3.0)
+    let shape2: Shape = Rect(4.0, 5.0)
+
+    if let Circle(r) = shape1 {
+        assert_eq(r, 3.0, "if let Circle binds radius")
+    }
+
+    let area = if let Rect(w, h) = shape2 {
+        w * h
+    } else {
+        -1.0
+    }
+    assert_eq(area, 20.0, "if let Rect computes area")
+
+    // --- chained if let else if let ---
+
+    let check = if let Some(v) = none_val {
+        $"some:{v}"
+    } else if let Some(v) = some_val {
+        $"fallback:{v}"
+    } else {
+        "nothing"
+    }
+    assert_eq(check, "fallback:42", "chained if let else if let")
+
+    // --- while let ---
+
+    // Consume a list by repeatedly taking head
+    let mut items = [10, 20, 30, 40, 50]
+    let mut collected = 0
+    while let Some(head) = list_head(items) {
+        collected = collected + head
+        items = list_drop(items, 1)
+    }
+    assert_eq(collected, 150, "while let list drain sum")
+
+    // while let with counter
+    let mut counter: Option<Int> = Some(5)
+    let mut sum2 = 0
+    while let Some(n) = counter {
+        sum2 = sum2 + n
+        if n == 0 {
+            counter = None
+        } else {
+            counter = Some(n - 1)
+        }
+    }
+    assert_eq(sum2, 15, "while let countdown 5+4+3+2+1+0=15")
+
+    print("PASS")
+}

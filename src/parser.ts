@@ -1007,6 +1007,15 @@ export class Parser {
 
     if (this.check(TokenKind.KwWhile)) {
       this.advance();
+      // while let Pat = Expr { ... }
+      if (this.check(TokenKind.KwLet)) {
+        this.advance();
+        const pat = this.parsePattern();
+        this.expect(TokenKind.Assign);
+        const value = this.parseExpr();
+        const body = this.parseBlock();
+        return { kind: 'WhileLetStmt', pat, value, body, span };
+      }
       const cond = this.parseExpr();
       const body = this.parseBlock();
       return { kind: 'WhileStmt', cond, body, span };
@@ -1052,6 +1061,20 @@ export class Parser {
   private parseIf(): Expr {
     const span = this.span();
     this.expect(TokenKind.KwIf);
+    // if let Pat = Expr { ... } else { ... }
+    if (this.check(TokenKind.KwLet)) {
+      this.advance();
+      const pat = this.parsePattern();
+      this.expect(TokenKind.Assign);
+      const value = this.parseExpr();
+      const then = this.parseBlock();
+      let else_: Expr | null = null;
+      if (this.check(TokenKind.KwElse)) {
+        this.advance();
+        else_ = this.check(TokenKind.KwIf) ? this.parseIf() : this.parseBlock();
+      }
+      return { kind: 'IfLet', pat, value, then, else_, span };
+    }
     const cond = this.parseExpr();
     const then = this.parseBlock();
     let else_: Expr | null = null;

@@ -677,6 +677,15 @@ export class TypeChecker {
         return baseTy;
       }
 
+      case 'IfLet': {
+        this.checkExpr(expr.value, env);
+        const ifLetEnv = env.child();
+        this.checkPatternBinding(expr.pat, T_UNKNOWN, ifLetEnv);
+        this.checkExpr(expr.then, ifLetEnv);
+        if (expr.else_) this.checkExpr(expr.else_, env);
+        return T_UNKNOWN;
+      }
+
       case 'Loop': {
         this.checkExpr(expr.body, env);
         return T_UNKNOWN;
@@ -728,6 +737,13 @@ export class TypeChecker {
       case 'WhileStmt': {
         this.checkExpr(stmt.cond, env);
         this.checkExpr(stmt.body, env);
+        break;
+      }
+      case 'WhileLetStmt': {
+        this.checkExpr(stmt.value, env);
+        const wlEnv = env.child();
+        this.checkPatternBinding(stmt.pat, T_UNKNOWN, wlEnv);
+        this.checkExpr(stmt.body, wlEnv);
         break;
       }
     }

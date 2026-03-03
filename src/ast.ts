@@ -70,6 +70,7 @@ export type Expr =
   | { kind: 'EnumVariant';  typeName: string; variant: string; fields: Expr[] | { name: string; value: Expr }[]; span: Span }
   | { kind: 'Loop';         body: Expr; span: Span }
   | { kind: 'Range';        lo: Expr; hi: Expr; inclusive: boolean; span: Span }
+  | { kind: 'IfLet';        pat: Pattern; value: Expr; then: Expr; else_: Expr | null; span: Span }
 
 export interface MatchArm {
   pattern: Pattern;
@@ -90,8 +91,9 @@ export type Stmt =
   | { kind: 'LetMutStmt'; name: string; ty: TypeExpr | null; init: Expr; span: Span }
   | { kind: 'AssignStmt'; target: Expr; op: string; value: Expr; span: Span }
   | { kind: 'ExprStmt';   expr: Expr; span: Span }
-  | { kind: 'ForStmt';    pat: Pattern; iter: Expr; body: Expr; span: Span }
-  | { kind: 'WhileStmt';  cond: Expr; body: Expr; span: Span }
+  | { kind: 'ForStmt';       pat: Pattern; iter: Expr; body: Expr; span: Span }
+  | { kind: 'WhileStmt';    cond: Expr; body: Expr; span: Span }
+  | { kind: 'WhileLetStmt'; pat: Pattern; value: Expr; body: Expr; span: Span }
 
 // ─── Declarations ────────────────────────────────────────────
 

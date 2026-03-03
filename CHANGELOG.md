@@ -9,6 +9,26 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.2.7] - 2026-03-03
+
+### Parser
+- `if let Pat = Expr { ... } else { ... }` — pattern-matching conditional; bindings scoped to the `then` branch
+- `else if let ...` chains work correctly (recursive `parseIf`)
+- `while let Pat = Expr { ... }` — loop that breaks when pattern fails to match; supports `break`/`continue`
+
+### Interpreter
+- `IfLet` expr: evaluates to then-branch value on match, else-branch (or `Unit`) on no-match
+- `WhileLetStmt`: re-evaluates value each iteration, creates fresh child env per iteration for pattern bindings
+
+### Type Checker
+- Added `IfLet` case (checks value, then, else_ in correct scopes)
+- Added `WhileLetStmt` case
+
+### Tests
+- Added test 31: `31_if_let_while_let.axon` — covers Option/Result/ADT patterns, chained `else if let`, `while let` list drain and countdown; all 31 tests pass
+
+---
+
 ## [0.2.6] - 2026-03-03
 
 ### Parser
