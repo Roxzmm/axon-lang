@@ -1,0 +1,66 @@
+module Test
+
+fn main() -> Unit {
+    // --- Triple-quoted strings (non-interpolated) ---
+
+    let s1 = """
+        Hello
+        World
+        """
+    assert(contains(s1, "Hello"), "multiline contains Hello")
+    assert(contains(s1, "World"), "multiline contains World")
+
+    // Common indent is stripped
+    let lines = split(s1, "\n")
+    // After trimCommonIndent: no leading spaces
+    assert(!starts_with(option_unwrap(list_get(lines, 0)), " "), "indent stripped")
+
+    // --- $"""...""" interpolated triple-quoted strings ---
+
+    let name = "Axon"
+    let version = 3
+    let msg = $"""
+        Language: {name}
+        Version: {version}
+        """
+    assert(contains(msg, "Axon"), "interp triple contains name")
+    assert(contains(msg, "3"), "interp triple contains version")
+
+    // --- map_update ---
+
+    let m1 = map_insert(map_insert(map_empty(), "a", 1), "b", 2)
+    let m2 = map_update(m1, "a", |v| v + 10)
+    assert_eq(option_unwrap(map_get(m2, "a")), 11, "map_update a: 1→11")
+    assert_eq(option_unwrap(map_get(m2, "b")), 2, "map_update b unchanged")
+
+    // map_update on missing key: gets Unit as existing value
+    let m3 = map_update(map_empty(), "x", |_| 42)
+    assert_eq(option_unwrap(map_get(m3, "x")), 42, "map_update new key")
+
+    // --- map_merge ---
+
+    let ma = map_insert(map_insert(map_empty(), "x", 1), "y", 2)
+    let mb = map_insert(map_insert(map_empty(), "y", 20), "z", 30)
+    let mc = map_merge(ma, mb)
+    assert_eq(option_unwrap(map_get(mc, "x")), 1, "merge: x from a")
+    assert_eq(option_unwrap(map_get(mc, "y")), 20, "merge: y overridden by b")
+    assert_eq(option_unwrap(map_get(mc, "z")), 30, "merge: z from b")
+    assert_eq(map_len(mc), 3, "merge: 3 keys total")
+
+    // --- map_filter ---
+
+    let md = map_insert(map_insert(map_insert(map_empty(), "a", 1), "b", 2), "c", 3)
+    let me = map_filter(md, |_k, v| v > 1)
+    assert_eq(map_len(me), 2, "map_filter: 2 entries > 1")
+    assert(!map_has(me, "a"), "map_filter: a removed")
+    assert(map_has(me, "b"), "map_filter: b kept")
+
+    // --- map_from_keys ---
+
+    let keys = ["x", "y", "z"]
+    let mf = map_from_keys(keys, 0)
+    assert_eq(map_len(mf), 3, "from_keys: 3 entries")
+    assert_eq(option_unwrap(map_get(mf, "x")), 0, "from_keys: x=0")
+
+    print("PASS")
+}

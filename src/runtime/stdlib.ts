@@ -364,6 +364,19 @@ const mapFns: Record<string, NativeFn> = {
     if (m.tag !== ValueTag.Record) throw new RuntimeError('Map.is_empty: expected map');
     return mkBool(m.fields.size === 0);
   },
+  map_merge: (a, b) => {
+    if (a.tag !== ValueTag.Record) throw new RuntimeError('map_merge: expected map');
+    if (b.tag !== ValueTag.Record) throw new RuntimeError('map_merge: expected map');
+    const newFields = new Map(a.fields);
+    for (const [k, v] of b.fields) newFields.set(k, v);
+    return { tag: ValueTag.Record, typeName: 'Map', fields: newFields } as AxonValue;
+  },
+  map_from_keys: (keys, defaultVal) => {
+    if (keys.tag !== ValueTag.List) throw new RuntimeError('map_from_keys: expected list');
+    const fields = new Map<string, AxonValue>();
+    for (const k of keys.items) fields.set(displayValue(k), defaultVal);
+    return { tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue;
+  },
 };
 
 // ─── Option operations ───────────────────────────────────────

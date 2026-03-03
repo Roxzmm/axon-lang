@@ -365,7 +365,7 @@ export class Lexer {
     this.advance(); // consume opening "
     let value = '';
 
-    // Triple-quoted string (never interpolated in this implementation)
+    // Triple-quoted string: """...""" or $"""..."""
     if (this.src[this.pos] === '"' && this.peek(1) === '"') {
       this.advance(); this.advance();
       while (this.pos < this.src.length) {
@@ -374,12 +374,27 @@ export class Lexer {
           break;
         }
         if (this.src[this.pos] === '\n') { this.line++; this.col = 1; }
-        value += this.src[this.pos];
-        this.advance();
+        if (interpolated && this.src[this.pos] === '{') {
+          // Collect raw "{...}" for interpolation
+          value += '{';
+          this.advance();
+          let depth = 1;
+          while (this.pos < this.src.length && depth > 0) {
+            const c = this.src[this.pos];
+            if (c === '{') depth++;
+            if (c === '}') { depth--; if (depth === 0) { value += '}'; this.advance(); break; } }
+            if (c === '\n') { this.line++; this.col = 1; }
+            value += c;
+            this.advance();
+          }
+        } else {
+          value += this.src[this.pos];
+          this.advance();
+        }
       }
       // Trim common indent
       value = trimCommonIndent(value);
-      return { kind: TokenKind.StringLit, value, line, col };
+      return { kind: interpolated ? TokenKind.InterpolatedStringLit : TokenKind.StringLit, value, line, col };
     }
 
     // Regular string

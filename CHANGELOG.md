@@ -9,6 +9,24 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.3.0] - 2026-03-03
+
+### Lexer
+- `$"""..."""` — interpolated triple-quoted strings now support `{expr}` interpolation
+  (previously `$"""..."""` treated `{` as literal; now consistent with `$"..."`)
+- `"""..."""` non-interpolated triple-quoted strings unchanged
+
+### Standard Library — Map (new functions)
+- `map_update(m, key, fn) -> Map` — update value at key by applying fn to existing value (Unit if missing)
+- `map_merge(a, b) -> Map` — merge two maps; b's keys override a's
+- `map_filter(m, fn) -> Map` — keep only entries where `fn(key, value)` returns true (higher-order)
+- `map_from_keys(keys, default) -> Map` — create map from list of keys, all with same default value
+
+### Tests
+- Added test 34: `34_multiline_and_maps.axon` — covers `$"""` interpolation, map_update, map_merge, map_filter, map_from_keys; all 34 tests pass
+
+---
+
 ## [0.2.9] - 2026-03-03
 
 ### Standard Library

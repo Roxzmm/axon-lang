@@ -256,6 +256,24 @@ export class Interpreter {
         return call(fn, [opt.fields[0]]);
       return opt;
     }));
+    this.globalEnv.define('map_update', mkNativeAsync('map_update', async (m, k, fn) => {
+      if (m.tag !== ValueTag.Record) throw new RuntimeError('map_update: expected map');
+      const key = displayValue(k);
+      const existing = m.fields.get(key) ?? UNIT;
+      const newVal = await call(fn, [existing]);
+      const newFields = new Map(m.fields);
+      newFields.set(key, newVal);
+      return { tag: ValueTag.Record, typeName: 'Map', fields: newFields } as AxonValue;
+    }));
+    this.globalEnv.define('map_filter', mkNativeAsync('map_filter', async (m, fn) => {
+      if (m.tag !== ValueTag.Record) throw new RuntimeError('map_filter: expected map');
+      const newFields = new Map<string, AxonValue>();
+      for (const [k, v] of m.fields) {
+        const keep = await call(fn, [mkString(k), v]);
+        if (keep.tag === ValueTag.Bool && keep.value) newFields.set(k, v);
+      }
+      return { tag: ValueTag.Record, typeName: 'Map', fields: newFields } as AxonValue;
+    }));
 
     // Async timing
     this.globalEnv.define('sleep', mkNativeAsync('sleep', async (ms) => {
