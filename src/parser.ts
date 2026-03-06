@@ -1221,11 +1221,36 @@ export class Parser {
 
     if (tok.kind === TokenKind.IntLit) {
       this.advance();
-      return { kind: 'LitPat', value: { kind: 'IntLit', value: BigInt(tok.value), span }, span };
+      const lo: import('./ast').LitExpr = { kind: 'IntLit', value: BigInt(tok.value), span };
+      // Range pattern: n..=m (inclusive) or n..m (exclusive)
+      if (this.check(TokenKind.DotDotEq) || this.check(TokenKind.DotDot)) {
+        const inclusive = this.cur().kind === TokenKind.DotDotEq;
+        this.advance();
+        const hiTok = this.cur();
+        if (hiTok.kind !== TokenKind.IntLit && hiTok.kind !== TokenKind.FloatLit)
+          throw new ParseError(`Expected number in range pattern`, hiTok.line, hiTok.col);
+        this.advance();
+        const hi: import('./ast').LitExpr = hiTok.kind === TokenKind.IntLit
+          ? { kind: 'IntLit', value: BigInt(hiTok.value), span: this.span() }
+          : { kind: 'FloatLit', value: parseFloat(hiTok.value), span: this.span() };
+        return { kind: 'RangePat', lo, hi, inclusive, span };
+      }
+      return { kind: 'LitPat', value: lo, span };
     }
     if (tok.kind === TokenKind.FloatLit) {
       this.advance();
-      return { kind: 'LitPat', value: { kind: 'FloatLit', value: parseFloat(tok.value), span }, span };
+      const lo: import('./ast').LitExpr = { kind: 'FloatLit', value: parseFloat(tok.value), span };
+      if (this.check(TokenKind.DotDotEq) || this.check(TokenKind.DotDot)) {
+        const inclusive = this.cur().kind === TokenKind.DotDotEq;
+        this.advance();
+        const hiTok = this.cur();
+        this.advance();
+        const hi: import('./ast').LitExpr = hiTok.kind === TokenKind.IntLit
+          ? { kind: 'IntLit', value: BigInt(hiTok.value), span: this.span() }
+          : { kind: 'FloatLit', value: parseFloat(hiTok.value), span: this.span() };
+        return { kind: 'RangePat', lo, hi, inclusive, span };
+      }
+      return { kind: 'LitPat', value: lo, span };
     }
     if (tok.kind === TokenKind.BoolLit) {
       this.advance();

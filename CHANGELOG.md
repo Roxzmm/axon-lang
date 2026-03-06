@@ -9,6 +9,33 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.5.1] - 2026-03-07
+
+### Range patterns in `match`
+
+Integer and float range patterns are now supported in match arms:
+
+```axon
+let grade = match score {
+    90..=100 => "A",    // inclusive: 90 <= score <= 100
+    80..=89  => "B",
+    70..=79  => "C",
+    0..70    => "F",    // exclusive: 0 <= score < 70
+    _        => "invalid",
+}
+
+let category = match temperature {
+    0.0..=15.0  => "cold",
+    15.0..=25.0 => "comfortable",
+    25.0..=35.0 => "warm",
+    _           => "hot",
+}
+```
+
+Both `n..=m` (inclusive, Rust-style) and `n..m` (exclusive) work for `Int` and `Float` values.
+
+---
+
 ## [0.5.0] - 2026-03-07
 
 ### `#[test]` annotation — Per-function test cases

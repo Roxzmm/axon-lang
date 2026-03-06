@@ -1657,6 +1657,15 @@ export class Interpreter {
         if (val.tag === ValueTag.Int && lo.tag === ValueTag.Int && hi.tag === ValueTag.Int) {
           return val.value >= lo.value && (pat.inclusive ? val.value <= hi.value : val.value < hi.value);
         }
+        // Float range matching
+        if ((val.tag === ValueTag.Float || val.tag === ValueTag.Int)) {
+          const v = val.tag === ValueTag.Float ? val.value : Number(val.value);
+          const l = lo.tag === ValueTag.Float ? lo.value : lo.tag === ValueTag.Int ? Number(lo.value) : null;
+          const h = hi.tag === ValueTag.Float ? hi.value : hi.tag === ValueTag.Int ? Number(hi.value) : null;
+          if (l !== null && h !== null) {
+            return v >= l && (pat.inclusive ? v <= h : v < h);
+          }
+        }
         return false;
       }
 
