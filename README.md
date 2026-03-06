@@ -312,6 +312,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Trace mode (`--trace` / `--trace-file`, JSONL) | ✅ Complete |
 | Capability system (`agent requires` + `spawn with [Cap]`) | ✅ Complete |
 | Channel primitives (`channel`, `chan_send/recv`, `pipeline`) | ✅ Complete |
+| Trace replay (`axon replay <trace.jsonl> <program>`) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 

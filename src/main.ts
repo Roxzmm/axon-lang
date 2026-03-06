@@ -34,7 +34,7 @@ function c(color: keyof typeof C, s: string): string {
 function printBanner(): void {
   console.log(c('cyan', c('bold', `
   ╔═══════════════════════════════════════╗
-  ║   Axon Language Interpreter v0.4.5    ║
+  ║   Axon Language Interpreter v0.4.6    ║
   ║   AI-Native Programming Language      ║
   ╚═══════════════════════════════════════╝`)));
   console.log();
@@ -525,6 +525,37 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'replay': {
+      // axon replay <trace.jsonl> <program.axon>
+      const traceArg = args[1];
+      const progArg  = args[2];
+      if (!traceArg || !progArg) {
+        console.error('Usage: axon replay <trace.jsonl> <program.axon>');
+        process.exit(1);
+      }
+      const traceAbs = path.resolve(traceArg);
+      const progAbs  = path.resolve(progArg);
+      if (!fs.existsSync(traceAbs)) { console.error(`Trace file not found: ${traceArg}`); process.exit(1); }
+      if (!fs.existsSync(progAbs))  { console.error(`Program file not found: ${progArg}`); process.exit(1); }
+      const traceJsonl = fs.readFileSync(traceAbs, 'utf-8');
+      const source     = fs.readFileSync(progAbs,  'utf-8');
+      let program;
+      try { program = parse(source, progAbs); }
+      catch (e) { console.error('Parse error:', (e as Error).message); process.exit(1); }
+      const diags = typeCheck(program);
+      const errors = diags.filter(d => d.level === 'error');
+      if (errors.length > 0) { printDiagnostics(errors, source, progArg); process.exit(1); }
+      const interp = new Interpreter();
+      interp.enableReplay(traceJsonl);
+      try {
+        await interp.execute(program, progAbs);
+      } catch (e) {
+        console.error(c('red', 'Runtime error:'), (e as Error).message);
+        process.exit(1);
+      }
+      break;
+    }
+
     case 'check': {
       const file = args[1];
       if (!file) { console.error('Usage: axon check <file.axon>'); process.exit(1); }
@@ -544,9 +575,10 @@ async function main(): Promise<void> {
       console.log(`${c('bold', 'Usage:')} axon <command> [options]
 
 ${c('cyan', 'Commands:')}
-  run <file>     Run an Axon program
-  check <file>   Type-check without running
-  repl           Start interactive REPL
+  run <file>                   Run an Axon program
+  replay <trace.jsonl> <file>  Replay a program using recorded trace (mock side effects)
+  check <file>                 Type-check without running
+  repl                         Start interactive REPL
 
 ${c('cyan', 'Options for run:')}
   --watch, -w          Enable hot reload (watch for file changes)

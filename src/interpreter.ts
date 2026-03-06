@@ -85,6 +85,8 @@ export class Interpreter {
   private capabilityStack: Array<Set<string> | null> = [];
   // Trace support: when set, emit JSONL trace events for effectful operations
   private tracer: ((event: Record<string, unknown>) => void) | null = null;
+  // Replay mode: map from fn name → queue of recorded result values
+  private replayQueues: Map<string, AxonValue[]> | null = null;
   // Functions that are interesting enough to trace (effectful/impure)
   private static readonly TRACE_FNS = new Set([
     'read_file', 'write_file', 'file_exists', 'append_file',
@@ -96,6 +98,10 @@ export class Interpreter {
     'random', 'random_int', 'random_bool',
     'json_parse', 'json_stringify', 'json_stringify_pretty',
     'ask_all', 'ask_any', 'tool_list', 'tool_schema',
+  ]);
+  // These are traced but should still execute in replay mode (output-only, no replay value needed)
+  private static readonly REPLAY_PASSTHROUGH = new Set([
+    'print', 'println', 'eprint', 'eprintln', 'sleep_ms', 'sleep',
   ]);
 
   // Capability → required capability name mapping (function name → cap name)
@@ -128,6 +134,61 @@ export class Interpreter {
         `but this agent was only granted: [${[...topCaps].join(', ')}]`
       );
     }
+  }
+
+  // Parse a displayValue string back to a typed AxonValue for replay
+  private parseRecordedValue(s: string): AxonValue {
+    if (s === '()') return UNIT;
+    if (s === 'true') return TRUE;
+    if (s === 'false') return FALSE;
+    if (s === 'None') return mkNone();
+    if (s === '!') return { tag: ValueTag.Never };
+    // Some(x)
+    if (s.startsWith('Some(') && s.endsWith(')')) {
+      return mkSome(this.parseRecordedValue(s.slice(5, -1)));
+    }
+    // Ok(x)
+    if (s.startsWith('Ok(') && s.endsWith(')')) {
+      return mkOk(this.parseRecordedValue(s.slice(3, -1)));
+    }
+    // Err(x)
+    if (s.startsWith('Err(') && s.endsWith(')')) {
+      return mkErr(mkString(s.slice(4, -1)));
+    }
+    // Quoted string "..."
+    if (s.startsWith('"') && s.endsWith('"')) {
+      return mkString(s.slice(1, -1).replace(/\\"/g, '"'));
+    }
+    // Int: pure digits, possibly negative
+    if (/^-?\d+$/.test(s)) return mkInt(BigInt(s));
+    // Float
+    if (/^-?\d*\.\d+$/.test(s) || /^-?\d+\.\d*$/.test(s)) return mkFloat(parseFloat(s));
+    // List [...]
+    if (s.startsWith('[') && s.endsWith(']')) {
+      const inner = s.slice(1, -1).trim();
+      if (!inner) return mkList([]);
+      // Simple split by ', ' (not perfect for nested, but good enough for replay)
+      return mkList(inner.split(', ').map(item => this.parseRecordedValue(item.trim())));
+    }
+    // Default: return as string
+    return mkString(s);
+  }
+
+  enableReplay(traceJsonl: string): void {
+    const queues = new Map<string, AxonValue[]>();
+    for (const line of traceJsonl.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const event = JSON.parse(trimmed) as Record<string, unknown>;
+        if (event.event === 'call' && typeof event.fn === 'string' && event.result !== undefined) {
+          if (!queues.has(event.fn)) queues.set(event.fn, []);
+          queues.get(event.fn)!.push(this.parseRecordedValue(String(event.result)));
+        }
+      } catch { /* skip malformed lines */ }
+    }
+    this.replayQueues = queues;
+    process.stderr.write(`[replay] loaded ${[...queues.values()].reduce((s, q) => s + q.length, 0)} recorded calls\n`);
   }
 
   enableTrace(traceFile?: string): void {
@@ -1794,6 +1855,15 @@ export class Interpreter {
   async callValueAsync(fn: AxonValue, args: AxonValue[]): Promise<AxonValue> {
     if (fn.tag === ValueTag.NativeFn) {
       this.checkCapability(fn.name);
+      // Replay mode: substitute recorded result for traced functions (skip passthrough like print)
+      if (this.replayQueues && Interpreter.TRACE_FNS.has(fn.name) && !Interpreter.REPLAY_PASSTHROUGH.has(fn.name)) {
+        const q = this.replayQueues.get(fn.name);
+        if (q && q.length > 0) {
+          const recorded = q.shift()!;
+          process.stderr.write(`[replay] ${fn.name} → ${displayValue(recorded)}\n`);
+          return recorded;
+        }
+      }
       if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
         const result = fn.fn(...args);
         this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });
@@ -1803,6 +1873,15 @@ export class Interpreter {
     }
     if (fn.tag === ValueTag.AsyncNativeFn) {
       this.checkCapability(fn.name);
+      // Replay mode: substitute recorded result for traced functions (skip passthrough like print)
+      if (this.replayQueues && Interpreter.TRACE_FNS.has(fn.name) && !Interpreter.REPLAY_PASSTHROUGH.has(fn.name)) {
+        const q = this.replayQueues.get(fn.name);
+        if (q && q.length > 0) {
+          const recorded = q.shift()!;
+          process.stderr.write(`[replay] ${fn.name} → ${displayValue(recorded)}\n`);
+          return recorded;
+        }
+      }
       if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
         const result = await fn.fn(...args);
         this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });

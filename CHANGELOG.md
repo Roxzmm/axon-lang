@@ -9,6 +9,41 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.6] - 2026-03-06
+
+### `axon replay` — Deterministic Trace Replay
+
+Replay a recorded trace to reproduce a run with mocked side effects:
+
+```bash
+# First, record a run
+axon run my_agent.axon --trace-file run1.jsonl
+
+# Later, replay it (all effectful calls return recorded results)
+axon replay run1.jsonl my_agent.axon
+```
+
+**How it works:**
+- `--trace-file` records every call to effectful functions as JSONL
+- `axon replay` loads the JSONL, then runs the program with a mock layer that intercepts the same effectful functions in call order and returns the recorded values
+- Output functions (`print`, `println`, `sleep`) still execute normally (passthrough)
+- Recorded values are parsed back to typed Axon values: `None` → Option::None, `Some(42)` → Option::Some(42), `"str"` → String, integers, lists, etc.
+
+**Replay stderr shows substituted calls:**
+```
+[replay] loaded 5 recorded calls
+[replay] env_get → None
+[replay] http_get → Ok("...")
+[replay] llm_call → "Answer: 42"
+```
+
+**Use cases:**
+- Reproduce a specific AI agent run for debugging
+- Run the same sequence of LLM responses deterministically in CI
+- Mock expensive HTTP/LLM calls in tests
+
+---
+
 ## [0.4.5] - 2026-03-06
 
 ### `chan_select` + `assert_eq` / `assert_ne`
