@@ -377,6 +377,27 @@ const mapFns: Record<string, NativeFn> = {
     for (const k of keys.items) fields.set(displayValue(k), defaultVal);
     return { tag: ValueTag.Record, typeName: 'Map', fields } as AxonValue;
   },
+  // Aliases and convenience
+  map_set:    (m, k, v) => {  // alias for map_insert
+    if (m.tag !== ValueTag.Record) throw new RuntimeError('map_set: expected map');
+    const newFields = new Map(m.fields);
+    newFields.set(displayValue(k), v);
+    return { tag: ValueTag.Record, typeName: 'Map', fields: newFields } as AxonValue;
+  },
+  map_contains: (m, k) => {  // alias for map_has
+    if (m.tag !== ValueTag.Record) throw new RuntimeError('map_contains: expected map');
+    return mkBool(m.fields.has(displayValue(k)));
+  },
+  map_get_or: (m, k, def) => {  // map_get with default
+    if (m.tag !== ValueTag.Record) throw new RuntimeError('map_get_or: expected map');
+    const val = m.fields.get(displayValue(k));
+    return val !== undefined ? val : def;
+  },
+  map_count: (m, pred) => {
+    if (m.tag !== ValueTag.Record) throw new RuntimeError('map_count: expected map');
+    // Returns number of entries (like map_len, but named consistently)
+    return mkInt(m.fields.size);
+  },
 };
 
 // ─── Option operations ───────────────────────────────────────

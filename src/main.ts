@@ -34,7 +34,7 @@ function c(color: keyof typeof C, s: string): string {
 function printBanner(): void {
   console.log(c('cyan', c('bold', `
   ╔═══════════════════════════════════════╗
-  ║   Axon Language Interpreter v0.4.6    ║
+  ║   Axon Language Interpreter v0.4.7    ║
   ║   AI-Native Programming Language      ║
   ╚═══════════════════════════════════════╝`)));
   console.log();

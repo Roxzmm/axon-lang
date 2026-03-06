@@ -1986,10 +1986,17 @@ export class Interpreter {
     }
 
     // Dispatch on object type + method name
-    const dispatchName = this.methodDispatchName(obj.tag, method);
-    const dispatchFn   = this.globalEnv.tryGet(dispatchName);
-    if (dispatchFn) {
-      return this.callValueAsync(dispatchFn, [obj, ...args]);
+    // For Records, only use map_ prefix when it's actually a Map (typeName === 'Map')
+    const isMap = obj.tag === ValueTag.Record && (obj as Extract<AxonValue, { tag: ValueTag.Record }>).typeName === 'Map';
+    // Non-map records skip dispatch and go straight to impl lookup below
+    if (obj.tag !== ValueTag.Record || isMap) {
+      const dispatchName = this.methodDispatchName(obj.tag, method, isMap);
+      if (dispatchName) {  // skip empty dispatch name (no prefix for enums without option_ match)
+        const dispatchFn = this.globalEnv.tryGet(dispatchName);
+        if (dispatchFn) {
+          return this.callValueAsync(dispatchFn, [obj, ...args]);
+        }
+      }
     }
 
     // String methods
@@ -2032,9 +2039,9 @@ export class Interpreter {
     throw new RuntimeError(`No method '${method}' on ${obj.tag} (${displayValue(obj).slice(0, 30)})`);
   }
 
-  private methodDispatchName(tag: ValueTag, method: string): string {
+  private methodDispatchName(tag: ValueTag, method: string, isMap = false): string {
     const prefix = tag === ValueTag.List   ? 'list_'
-                 : tag === ValueTag.Record ? 'map_'   // Maps are Records
+                 : tag === ValueTag.Record ? (isMap ? 'map_' : '')   // Only use map_ prefix for Map records
                  : tag === ValueTag.Enum   ? 'option_'
                  : tag === ValueTag.String ? ''
                  : '';

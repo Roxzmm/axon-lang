@@ -9,6 +9,32 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.7] - 2026-03-06
+
+### Bugfix: Record method dispatch shadowing + Map stdlib additions
+
+**Bug fixed**: User-defined record types with methods named the same as map/string stdlib functions
+(e.g. `Rect.contains()`, `Color.keys()`) would silently dispatch to the stdlib function instead of
+the `impl` block method. Now non-Map records skip the stdlib dispatch prefix and go directly to
+their `impl` registry.
+
+Root cause: `methodDispatchName` used `map_` prefix for ALL `Record` values, treating every record
+as a map. Fixed to only use `map_` for records with `typeName === 'Map'`.
+
+**New map stdlib functions:**
+- `map_set(m, key, val)` — alias for `map_insert` (more intuitive name)
+- `map_contains(m, key)` — alias for `map_has`
+- `map_get_or(m, key, default)` — `map_get` with a fallback default value
+- `map_count(m)` — alias for `map_len`
+
+**Supervision: `RestForOne` strategy implemented:**
+The `Supervisor` now supports all three standard OTP strategies:
+- `OneForOne` (existing): restart only the crashed agent
+- `AllForOne` (existing): restart all children when one crashes
+- `RestForOne` (new): restart the crashed agent + all agents started after it
+
+---
+
 ## [0.4.6] - 2026-03-06
 
 ### `axon replay` — Deterministic Trace Replay

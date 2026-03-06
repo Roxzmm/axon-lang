@@ -202,6 +202,7 @@ export class TypeChecker {
       'map_empty', 'map_new', 'map_get', 'map_insert', 'map_remove', 'map_has',
       'map_len', 'map_is_empty', 'map_keys', 'map_values', 'map_entries',
       'map_update', 'map_filter', 'map_merge', 'map_from_keys',
+      'map_set', 'map_contains', 'map_get_or', 'map_count',
       // Math (complete)
       'sqrt', 'pow', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'clamp',
       'log', 'log2', 'exp', 'sin', 'cos', 'tan', 'sign', 'trunc', 'fract',

@@ -112,6 +112,19 @@ export class Supervisor {
           other.ref = newOtherRef;
         }
       }
+    } else if (this.strategy === 'RestForOne') {
+      // Restart the crashed agent + all agents started after it (in insertion order)
+      const names = [...this.children.keys()];
+      const idx = names.indexOf(name);
+      if (idx >= 0) {
+        for (const laterName of names.slice(idx + 1)) {
+          const other = this.children.get(laterName)!;
+          stopAgent(other.ref.id);
+          const newOtherRef = spawnAgent(other.config);
+          newOtherRef.onCrash = (r, e) => this.handleCrash(laterName, r, e);
+          other.ref = newOtherRef;
+        }
+      }
     }
   }
 
