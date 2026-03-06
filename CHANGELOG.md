@@ -9,6 +9,34 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.8] - 2026-03-06
+
+### `axon test` — Built-in Test Runner
+
+Run all `.axon` test files in a directory with pass/fail reporting:
+
+```bash
+axon test              # runs tests/axon/*.axon
+axon test my_tests/    # runs my_tests/*.axon
+```
+
+Output:
+```
+Running 41 test files...
+
+  ✓ 01_basics.axon  (2ms)
+  ✓ 02_types.axon   (1ms)
+  ...
+  ✗ 07_failing.axon  (3ms)
+    Assertion failed: expected 42
+
+✗ 1 failed, 40 passed  (178ms total)
+```
+
+Files prefixed with `_` (like `_scratch.axon`) are excluded from test runs.
+
+---
+
 ## [0.4.7] - 2026-03-06
 
 ### Bugfix: Record method dispatch shadowing + Map stdlib additions

@@ -34,7 +34,7 @@ function c(color: keyof typeof C, s: string): string {
 function printBanner(): void {
   console.log(c('cyan', c('bold', `
   ╔═══════════════════════════════════════╗
-  ║   Axon Language Interpreter v0.4.7    ║
+  ║   Axon Language Interpreter v0.4.8    ║
   ║   AI-Native Programming Language      ║
   ╚═══════════════════════════════════════╝`)));
   console.log();
@@ -556,6 +556,76 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'test': {
+      // axon test [dir]   — run all *.axon files in dir (default: tests/axon/)
+      const testDir = path.resolve(args[1] || 'tests/axon');
+      if (!fs.existsSync(testDir)) {
+        console.error(`Test directory not found: ${testDir}`);
+        process.exit(1);
+      }
+      const files = fs.readdirSync(testDir)
+        .filter(f => f.endsWith('.axon') && !f.startsWith('_'))
+        .sort()
+        .map(f => path.join(testDir, f));
+
+      if (files.length === 0) {
+        console.log(c('yellow', `No .axon files found in ${testDir}`));
+        break;
+      }
+
+      let passed = 0, failed = 0;
+      const startAll = Date.now();
+      const failures: Array<{ file: string; error: string }> = [];
+
+      console.log(c('cyan', c('bold', `\nRunning ${files.length} test files...\n`)));
+
+      for (const f of files) {
+        const basename = path.basename(f);
+        const start = Date.now();
+        const source = fs.readFileSync(f, 'utf-8');
+        let ok = true;
+        let errMsg = '';
+        try {
+          const prog = parse(source, f);
+          const diags = typeCheck(prog).filter(d => d.level === 'error');
+          if (diags.length > 0) throw new Error(diags[0].message);
+          const interp = new Interpreter();
+          // Suppress stdout during test run (capture it)
+          const origWrite = process.stdout.write.bind(process.stdout);
+          const captured: string[] = [];
+          (process.stdout as any).write = (s: string) => { captured.push(s); return true; };
+          try {
+            await interp.execute(prog, f);
+          } finally {
+            (process.stdout as any).write = origWrite;
+          }
+        } catch (e) {
+          ok = false;
+          errMsg = (e instanceof Error ? e.message : String(e)).split('\n')[0];
+        }
+        const ms = Date.now() - start;
+        if (ok) {
+          console.log(`  ${c('green', '✓')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
+          passed++;
+        } else {
+          console.log(`  ${c('red', '✗')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
+          console.log(`    ${c('red', errMsg)}`);
+          failures.push({ file: basename, error: errMsg });
+          failed++;
+        }
+      }
+
+      const totalMs = Date.now() - startAll;
+      console.log();
+      if (failed === 0) {
+        console.log(c('green', c('bold', `✓ All ${passed} tests passed`)) + c('gray', `  (${totalMs}ms total)`));
+      } else {
+        console.log(c('red', c('bold', `✗ ${failed} failed`)) + c('gray', `, ${passed} passed  (${totalMs}ms total)`));
+        process.exit(1);
+      }
+      break;
+    }
+
     case 'check': {
       const file = args[1];
       if (!file) { console.error('Usage: axon check <file.axon>'); process.exit(1); }
@@ -576,6 +646,7 @@ async function main(): Promise<void> {
 
 ${c('cyan', 'Commands:')}
   run <file>                   Run an Axon program
+  test [dir]                   Run all *.axon test files in a directory (default: tests/axon/)
   replay <trace.jsonl> <file>  Replay a program using recorded trace (mock side effects)
   check <file>                 Type-check without running
   repl                         Start interactive REPL
