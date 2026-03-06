@@ -915,7 +915,15 @@ export class Parser {
     if (tok.kind === TokenKind.KwSpawn) {
       this.advance();
       const agentName = this.expectIdent();
-      return { kind: 'Spawn', agentName, initMsg: null, span };
+      // Optional timeout modifier: spawn AgentName timeout(ms)
+      let timeout: Expr | null = null;
+      if (this.check(TokenKind.KwTimeout) && this.cur().line === this.tokens[this.pos - 1]?.line) {
+        this.advance();
+        this.expect(TokenKind.LParen);
+        timeout = this.parseExpr();
+        this.expect(TokenKind.RParen);
+      }
+      return { kind: 'Spawn', agentName, initMsg: null, timeout, span };
     }
 
     // Ok(e) / Err(e) / Some(e)

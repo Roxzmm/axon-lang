@@ -209,7 +209,7 @@ export class TypeChecker {
       'tuple_get', 'tuple_len',
       // Compare / random / misc
       'compare', 'min_val', 'max_val', 'random', 'random_int', 'random_bool',
-      'now_ms', 'now_s', 'timestamp', 'sleep', 'uuid',
+      'now_ms', 'now_s', 'timestamp', 'sleep', 'sleep_ms', 'uuid',
       'read_file', 'write_file', 'file_exists',
       'type_of', 'exit',
       // Conversions

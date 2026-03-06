@@ -104,18 +104,20 @@ export class AgentRef {
   private processing = false;
   private stopped    = false;
 
-  public state:    Map<string, AxonValue>;
-  public handlers: Map<string, AgentHandlerFn>;
-  public name:     string;
-  public id:       string;
+  public state:      Map<string, AxonValue>;
+  public handlers:   Map<string, AgentHandlerFn>;
+  public name:       string;
+  public id:         string;
+  public timeoutMs:  number | null;
   // Supervisor callback: called when a handler throws an unhandled error
   public onCrash?: (ref: AgentRef, error: Error) => void;
 
-  constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>) {
-    this.name     = name;
-    this.id       = `${name}#${Math.random().toString(36).slice(2, 8)}`;
-    this.state    = state;
-    this.handlers = handlers;
+  constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>, timeoutMs: number | null = null) {
+    this.name      = name;
+    this.id        = `${name}#${Math.random().toString(36).slice(2, 8)}`;
+    this.state     = state;
+    this.handlers  = handlers;
+    this.timeoutMs = timeoutMs;
   }
 
   stop(): void { this.stopped = true; }
@@ -148,7 +150,16 @@ export class AgentRef {
             msg.reject(new Error(`Agent ${this.name}: unknown message type '${msg.type}'`));
             continue;
           }
-          const result = await handler(this.state, msg.args);
+          // Apply per-message timeout via Promise.race if timeoutMs is set
+          const handlerPromise = handler(this.state, msg.args);
+          const result = this.timeoutMs != null
+            ? await Promise.race([
+                handlerPromise,
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error('timeout')), this.timeoutMs!)
+                ),
+              ])
+            : await handlerPromise;
           msg.resolve(result);
         } catch (e) {
           const err = e instanceof Error ? e : new Error(String(e));

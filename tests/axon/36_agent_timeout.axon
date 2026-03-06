@@ -1,0 +1,95 @@
+module Test
+
+// Test 36: Agent execution timeout — spawn Agent timeout(ms)
+// An agent spawned with timeout(ms) will abort a handler that
+// exceeds the limit (in milliseconds).
+
+// ── Fast agent with generous timeout ────────────────────────
+
+agent Counter {
+    state { count: Int = 0 }
+
+    on Increment(n: Int) -> Int {
+        count = count + n
+        count
+    }
+
+    on GetValue -> Int {
+        count
+    }
+
+    on Reset -> Unit {
+        count = 0
+    }
+}
+
+// ── Agent for sleep_ms tests ─────────────────────────────────
+
+agent Worker {
+    state { }
+
+    on FastTask -> String {
+        "fast"
+    }
+
+    on SlowTask(ms: Int) -> String {
+        sleep_ms(ms)
+        "done"
+    }
+}
+
+fn main() -> Unit {
+    // --- Test 1: Timeout syntax — normal operation ---
+    // Agent with 5s timeout; fast handlers always complete in time
+
+    let c = spawn Counter timeout(5000)
+
+    let v1 = c.ask(Increment(10))
+    assert(v1 == 10, "counter increment with timeout: expect 10")
+    print($"Test 1a passed: {v1}")
+
+    let v2 = c.ask(Increment(5))
+    assert(v2 == 15, "counter second increment: expect 15")
+    print($"Test 1b passed: {v2}")
+
+    let v3 = c.ask(GetValue)
+    assert(v3 == 15, "counter get value: expect 15")
+    print($"Test 1c passed: {v3}")
+
+    c.send(Reset)
+    sleep(10)  // let fire-and-forget settle
+    let v4 = c.ask(GetValue)
+    assert(v4 == 0, "counter reset via send")
+    print($"Test 1d passed: reset to {v4}")
+
+    // --- Test 2: No-timeout agent still works normally ---
+
+    let c2 = spawn Counter
+    let v5 = c2.ask(Increment(100))
+    assert(v5 == 100, "no-timeout agent works normally")
+    print($"Test 2 passed: {v5}")
+
+    // --- Test 3: Fast handler within tight timeout ---
+    // FastTask() takes ~0ms; timeout(500ms) is plenty
+
+    let w = spawn Worker timeout(500)
+    let fast_result = w.ask(FastTask)
+    assert(fast_result == "fast", "fast task within 500ms timeout succeeds")
+    print($"Test 3a passed: {fast_result}")
+
+    // SlowTask(20ms) within a 2000ms timeout — should succeed
+    let w2 = spawn Worker timeout(2000)
+    let slow_result = w2.ask(SlowTask(20))
+    assert(slow_result == "done", "20ms task within 2000ms timeout succeeds")
+    print($"Test 3b passed: {slow_result}")
+
+    // --- Test 4: sleep_ms works correctly ---
+
+    let before = now_ms()
+    sleep_ms(50)
+    let after = now_ms()
+    assert(after - before >= 40, "sleep_ms(50) sleeps at least 40ms")
+    print($"Test 4 passed: sleep_ms elapsed ~{after - before}ms")
+
+    print("All agent timeout tests passed!")
+}

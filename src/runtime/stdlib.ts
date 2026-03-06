@@ -667,6 +667,14 @@ export function registerStdlib(env: Environment, define: (name: string, val: Axo
     define(name, native(name, fn));
   }
 
+  // ── Async timing ──────────────────────────────────────────
+  define('sleep_ms', mkNativeAsync('sleep_ms', async (msVal) => {
+    const ms = msVal.tag === ValueTag.Int ? Number(msVal.value)
+             : msVal.tag === ValueTag.Float ? msVal.value : 0;
+    await new Promise(resolve => setTimeout(resolve, ms));
+    return UNIT;
+  }));
+
   // ── Async HTTP functions ───────────────────────────────────
   define('http_get', mkNativeAsync('http_get', async (urlVal) => {
     const url = asStr(urlVal, 'http_get');

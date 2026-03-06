@@ -62,7 +62,7 @@ export type Expr =
   | { kind: 'Try';          expr: Expr; span: Span }       // expr?
   | { kind: 'Force';        expr: Expr; span: Span }       // expr!
   | { kind: 'Await';        expr: Expr; span: Span }
-  | { kind: 'Spawn';        agentName: string; initMsg: Expr | null; span: Span }
+  | { kind: 'Spawn';        agentName: string; initMsg: Expr | null; timeout: Expr | null; span: Span }
   | { kind: 'Return';       value: Expr | null; span: Span }
   | { kind: 'Break';        value: Expr | null; span: Span }
   | { kind: 'Continue';     span: Span }

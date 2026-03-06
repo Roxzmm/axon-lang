@@ -1026,7 +1026,14 @@ export class Interpreter {
           });
         }
 
-        const ref = new AgentRef(decl.name, state, handlers);
+        // Evaluate optional timeout expression
+        let timeoutMs: number | null = null;
+        if (expr.timeout) {
+          const tv = await this.evalExpr(expr.timeout, env);
+          if (tv.tag === ValueTag.Int) timeoutMs = Number(tv.value);
+          else if (tv.tag === ValueTag.Float) timeoutMs = tv.value;
+        }
+        const ref = new AgentRef(decl.name, state, handlers, timeoutMs);
         const { registerAgent } = await import('./runtime/agent');
         registerAgent(ref);
 

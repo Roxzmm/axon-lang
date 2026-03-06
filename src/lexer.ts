@@ -51,6 +51,7 @@ export const enum TokenKind {
   KwEmit     = 'emit',
   KwRequires = 'requires',
   KwHandle   = 'handle',
+  KwTimeout  = 'timeout',
 
   // Hot reload keywords
   KwHot      = 'hot',
@@ -184,6 +185,7 @@ const KEYWORDS: Record<string, TokenKind> = {
   emit:     TokenKind.KwEmit,
   requires: TokenKind.KwRequires,
   handle:   TokenKind.KwHandle,
+  timeout:  TokenKind.KwTimeout,
   hot:      TokenKind.KwHot,
   migrate:  TokenKind.KwMigrate,
   from:     TokenKind.KwFrom,

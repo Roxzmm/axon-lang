@@ -9,6 +9,43 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.1] - 2026-03-06
+
+### Language — Agent Execution Timeout (`spawn Agent timeout(ms)`)
+
+Agents can now be spawned with a per-handler execution timeout:
+
+```axon
+let agent = spawn Worker timeout(5000)  // 5-second handler timeout
+let result = agent.ask(SlowTask(data))  // RuntimeError if handler > 5000ms
+```
+
+**Semantics:**
+- `timeout(ms)` specifies the maximum allowed duration for a single message handler
+- Timeout is applied via `Promise.race` on each message dispatch in `drainQueue()`
+- If the handler exceeds the timeout, the message is rejected with `Error("timeout")`
+- The supervisor's `onCrash` callback is triggered (same path as handler crashes)
+- Agents without `timeout(...)` behave as before (no change)
+- `spawn Agent` and `spawn Agent timeout(ms)` are both valid syntax
+
+### Standard Library — `sleep_ms(ms)`
+- `sleep_ms(ms: Int) -> Unit | Async` — async sleep for `ms` milliseconds (uses `setTimeout`)
+- Available for use in agents and async functions
+
+### Implementation
+- **Lexer**: `KwTimeout = 'timeout'` keyword added
+- **AST**: `Spawn` expr gains `timeout: Expr | null` field
+- **Parser**: `parsePrimary()` Spawn case: optionally parse `timeout(expr)` on same line
+- **Interpreter**: Spawn evaluates timeout expr, passes `timeoutMs` to `AgentRef` constructor
+- **value.ts (AgentRef)**: `timeoutMs: number | null` field; `drainQueue()` wraps handler in `Promise.race` when set
+- **stdlib.ts**: `sleep_ms` added as async native function
+- **checker.ts**: `sleep_ms` registered in known names
+
+### Tests
+- Added test 36: `36_agent_timeout.axon` — fast agent with generous timeout, no-timeout agent, fast handler within tight timeout, slow handler within generous timeout, `sleep_ms` accuracy; all 36 tests pass
+
+---
+
 ## [0.4.0] - 2026-03-06
 
 ### Language — Algebraic Effect Handlers (`handle/in`)
