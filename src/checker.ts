@@ -275,6 +275,10 @@ export class TypeChecker {
     this.typeEnv.define('chan_close',          { kind: 'Fn', params: [U], ret: T_UNIT, effects: [] });
     this.typeEnv.define('chan_is_closed',      { kind: 'Fn', params: [U], ret: T_BOOL, effects: [] });
     this.typeEnv.define('chan_size',           { kind: 'Fn', params: [U], ret: T_INT, effects: [] });
+    this.typeEnv.define('chan_select',         { kind: 'Fn', params: [U], ret: U, effects: [] });
+    this.typeEnv.define('chan_select_timeout', { kind: 'Fn', params: [U, U], ret: U, effects: [] });
+    this.typeEnv.define('assert_eq',          { kind: 'Fn', params: [U, U, U], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('assert_ne',          { kind: 'Fn', params: [U, U, U], ret: T_UNIT, effects: [] });
     // Test / introspection helpers
     this.typeEnv.define('interpreter_hot_reload', { kind: 'Fn', params: [U], ret: T_UNIT, effects: [] });
 

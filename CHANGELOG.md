@@ -9,6 +9,40 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.5] - 2026-03-06
+
+### `chan_select` + `assert_eq` / `assert_ne`
+
+**`chan_select(channels)`** — Go-style multi-channel select, returns `(index, value)` of first ready channel:
+
+```axon
+let ch1 = channel(5)
+let ch2 = channel(5)
+chan_send(ch2, 99)
+
+let (idx, val) = chan_select([ch1, ch2])
+// idx = 1, val = 99
+```
+
+**`chan_select_timeout(channels, ms)`** — select with timeout, returns `Option<(Int, Any)>`:
+
+```axon
+let opt = chan_select_timeout([ch1, ch2], 5000)
+match opt {
+    Some((idx, val)) => print($"got {val} from channel {idx}"),
+    None             => print("timed out"),
+}
+```
+
+**`assert_eq(a, b, msg?)`** and **`assert_ne(a, b, msg?)`** — test helpers with detailed failure messages:
+
+```axon
+assert_eq(result, 42, "expected 42")
+assert_ne(status, "error", "should not be error")
+```
+
+---
+
 ## [0.4.4] - 2026-03-06
 
 ### Channels + Pipeline orchestration

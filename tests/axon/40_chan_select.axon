@@ -1,0 +1,82 @@
+module Test
+
+// Test 40: chan_select + assert_eq/assert_ne
+// chan_select(channels)             — blocks, returns (index, value) of first ready channel
+// chan_select_timeout(channels, ms) — returns Option<(Int, Any)>, None on timeout
+// assert_eq(a, b, msg?)            — throws if a != b
+// assert_ne(a, b, msg?)            — throws if a == b
+
+fn main() -> Unit {
+    // --- Test 1: assert_eq / assert_ne ---
+
+    assert_eq(1, 1, "1 == 1")
+    assert_eq("hello", "hello", "string equality")
+    assert_ne(1, 2, "1 != 2")
+    assert_ne("a", "b", "different strings")
+    print("Test 1 passed: assert_eq and assert_ne work")
+
+    // --- Test 2: chan_select picks first ready channel ---
+    // Pre-load ch2 before select; ch1 is empty
+    let ch1 = channel(5)
+    let ch2 = channel(5)
+    chan_send(ch2, 99)
+
+    let result = chan_select([ch1, ch2])
+    let idx = result[0]
+    let val = result[1]
+    assert_eq(idx, 1, "chan_select returns index of ready channel")
+    assert_eq(val, 99, "chan_select returns correct value")
+    print($"Test 2 passed: chan_select idx={idx}, val={val}")
+
+    // --- Test 3: chan_select with first channel ready ---
+
+    let chA = channel(5)
+    let chB = channel(5)
+    chan_send(chA, 42)
+
+    let r2 = chan_select([chA, chB])
+    assert_eq(r2[0], 0, "chan_select returns index 0 for chA")
+    assert_eq(r2[1], 42, "chan_select returns value from chA")
+    print("Test 3 passed: chan_select picks ch at index 0 when ready")
+
+    // --- Test 4: chan_select_timeout — returns value before timeout ---
+
+    let chX = channel(5)
+    chan_send(chX, 7)
+    let opt = chan_select_timeout([chX], 1000)
+    assert(opt != None, "chan_select_timeout returns Some when channel ready")
+    let tup = match opt { Some(t) => t, None => (0, 0) }
+    assert_eq(tup[0], 0, "timeout select index 0")
+    assert_eq(tup[1], 7, "timeout select value 7")
+    print("Test 4 passed: chan_select_timeout returns Some")
+
+    // --- Test 5: chan_select_timeout — times out on empty channels ---
+
+    let chEmpty = channel(5)
+    let opt2 = chan_select_timeout([chEmpty], 50)  // 50ms timeout
+    assert(opt2 == None, "chan_select_timeout returns None on empty channels")
+    print("Test 5 passed: chan_select_timeout returns None on timeout")
+
+    // --- Test 6: chan_select with multiple pre-loaded channels (FIFO by index) ---
+
+    let c0 = channel(5)
+    let c1 = channel(5)
+    let c2 = channel(5)
+    chan_send(c1, 100)
+    chan_send(c2, 200)
+
+    // c0 is empty, c1 has 100, c2 has 200
+    // select should pick c1 (index 1) as it's the first ready
+    let r3 = chan_select([c0, c1, c2])
+    assert_eq(r3[0], 1, "multi-channel select picks first ready (index 1)")
+    assert_eq(r3[1], 100, "multi-channel select value from c1")
+    print("Test 6 passed: chan_select finds first ready among multiple channels")
+
+    // --- Test 7: assert_eq with lists ---
+
+    assert_eq([1, 2, 3], [1, 2, 3], "list equality")
+    assert_ne([1, 2], [1, 3], "list inequality")
+    print("Test 7 passed: assert_eq works with lists")
+
+    print("All chan_select tests passed!")
+}

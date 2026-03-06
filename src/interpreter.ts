@@ -516,6 +516,76 @@ export class Interpreter {
       return mkInt(chVal.ref.size());
     }));
 
+    // ── chan_select: wait on first ready channel ────────────────────────────
+    this.globalEnv.define('chan_select', mkNativeAsync('chan_select', async (chListVal) => {
+      if (chListVal.tag !== ValueTag.List) throw new RuntimeError('chan_select: expected List<Channel>');
+      const channels = chListVal.items;
+      if (channels.length === 0) throw new RuntimeError('chan_select: list must not be empty');
+      // First pass: check if any channel already has data
+      for (let i = 0; i < channels.length; i++) {
+        const ch = channels[i];
+        if (ch.tag !== ValueTag.Channel) throw new RuntimeError('chan_select: expected Channel in list');
+        const opt = ch.ref.tryRecv();
+        if (opt.tag === ValueTag.Enum && opt.variant === 'Some') {
+          return mkTuple([mkInt(i), opt.fields[0]]);
+        }
+      }
+      // Block until first ready
+      return new Promise<AxonValue>(resolve => {
+        let resolved = false;
+        channels.forEach((ch, i) => {
+          if (ch.tag !== ValueTag.Channel) return;
+          ch.ref.recv().then(val => {
+            if (!resolved) { resolved = true; resolve(mkTuple([mkInt(i), val])); }
+          }).catch(() => {});
+        });
+      });
+    }));
+
+    this.globalEnv.define('chan_select_timeout', mkNativeAsync('chan_select_timeout', async (chListVal, msVal) => {
+      if (chListVal.tag !== ValueTag.List) throw new RuntimeError('chan_select_timeout: expected List<Channel>');
+      const ms = msVal && msVal.tag === ValueTag.Int ? Number(msVal.value)
+               : msVal && msVal.tag === ValueTag.Float ? msVal.value : 1000;
+      const channels = chListVal.items;
+      if (channels.length === 0) return mkNone();
+      // Check immediately first
+      for (let i = 0; i < channels.length; i++) {
+        const ch = channels[i];
+        if (ch.tag !== ValueTag.Channel) continue;
+        const opt = ch.ref.tryRecv();
+        if (opt.tag === ValueTag.Enum && opt.variant === 'Some') {
+          return mkSome(mkTuple([mkInt(i), opt.fields[0]]));
+        }
+      }
+      return new Promise<AxonValue>(resolve => {
+        let done = false;
+        const timer = setTimeout(() => { if (!done) { done = true; resolve(mkNone()); } }, ms);
+        channels.forEach((ch, i) => {
+          if (ch.tag !== ValueTag.Channel) return;
+          ch.ref.recv().then(val => {
+            if (!done) { done = true; clearTimeout(timer); resolve(mkSome(mkTuple([mkInt(i), val]))); }
+          }).catch(() => {});
+        });
+      });
+    }));
+
+    // ── assert_eq / assert_ne — test helpers ──────────────────────────────
+    this.globalEnv.define('assert_eq', mkNative('assert_eq', (a, b, msgVal?) => {
+      if (!valuesEqual(a, b)) {
+        const msg = msgVal && msgVal.tag === ValueTag.String ? `: ${msgVal.value}` : '';
+        throw new RuntimeError(`assert_eq failed${msg}: ${debugValue(a)} != ${debugValue(b)}`);
+      }
+      return UNIT;
+    }));
+
+    this.globalEnv.define('assert_ne', mkNative('assert_ne', (a, b, msgVal?) => {
+      if (valuesEqual(a, b)) {
+        const msg = msgVal && msgVal.tag === ValueTag.String ? `: ${msgVal.value}` : '';
+        throw new RuntimeError(`assert_ne failed${msg}: both equal ${debugValue(a)}`);
+      }
+      return UNIT;
+    }));
+
     // ── pipeline: pass output of each agent as input to next ──────────────
     this.globalEnv.define('pipeline', mkNativeAsync('pipeline', async (agentsVal, inputVal) => {
       if (agentsVal.tag !== ValueTag.List) throw new RuntimeError('pipeline: first arg must be List<Agent>');
