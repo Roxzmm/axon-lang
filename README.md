@@ -307,6 +307,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | `if let` / `while let` pattern binding | ✅ Complete |
 | `impl` blocks (methods on types, chaining) | ✅ Complete |
 | `$"""..."""` interpolated triple-quoted strings | ✅ Complete |
+| Algebraic effect handlers (`handle/in`) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 

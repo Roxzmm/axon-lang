@@ -1,0 +1,92 @@
+module Test
+
+fn read_config(path: String) -> String | IO {
+    read_file(path)
+}
+
+fn do_io_ops() -> String | IO {
+    let content = read_file("/data.txt")
+    write_file("/out.txt", content)
+    content
+}
+
+fn main() -> Unit {
+    // --- Basic handler ---
+
+    let result1 = handle IO {
+        read_file: |path| { $"mock:{path}" }
+    } in {
+        read_config("/etc/config.json")
+    }
+
+    assert(result1 == "mock:/etc/config.json", "handle IO overrides read_file")
+    print($"Test 1 passed: {result1}")
+
+    // --- Multiple handlers ---
+
+    let result2 = handle IO {
+        read_file: |path| { "test data" },
+        write_file: |path, content| { Ok(()) }
+    } in {
+        do_io_ops()
+    }
+
+    assert(result2 == "test data", "multiple handlers work together")
+    print($"Test 2 passed: {result2}")
+
+    // --- Nested handlers (inner shadows outer) ---
+
+    let result3 = handle IO {
+        read_file: |path| { "outer" }
+    } in {
+        handle IO {
+            read_file: |path| { "inner" }
+        } in {
+            read_file("/any")
+        }
+    }
+
+    assert(result3 == "inner", "inner handler shadows outer handler")
+    print($"Test 3 passed: {result3}")
+
+    // --- Handler captures closure variables ---
+
+    let prefix = "PREFIX"
+    let result4 = handle IO {
+        read_file: |path| { $"{prefix}:{path}" }
+    } in {
+        read_file("/test.txt")
+    }
+
+    assert(result4 == "PREFIX:/test.txt", "handler captures closure vars")
+    print($"Test 4 passed: {result4}")
+
+    // --- Handler stored as lambda variable ---
+
+    let mock_reader = |path| { $"static:{path}" }
+    let result5 = handle IO {
+        read_file: mock_reader
+    } in {
+        read_file("/foo/bar")
+    }
+
+    assert(result5 == "static:/foo/bar", "handler can be a stored lambda")
+    print($"Test 5 passed: {result5}")
+
+    // --- Handler body with block logic ---
+
+    let result6 = handle IO {
+        read_file: |path| {
+            let parts = split(path, "/")
+            let last_idx = list_len(parts) - 1
+            option_unwrap_or(list_get(parts, last_idx), "unknown")
+        }
+    } in {
+        read_file("/usr/local/config.toml")
+    }
+
+    assert(result6 == "config.toml", "handler body can contain block logic")
+    print($"Test 6 passed: {result6}")
+
+    print("All effect handler tests passed!")
+}

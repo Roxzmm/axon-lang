@@ -50,6 +50,7 @@ export const enum TokenKind {
   KwAwait    = 'await',
   KwEmit     = 'emit',
   KwRequires = 'requires',
+  KwHandle   = 'handle',
 
   // Hot reload keywords
   KwHot      = 'hot',
@@ -182,6 +183,7 @@ const KEYWORDS: Record<string, TokenKind> = {
   await:    TokenKind.KwAwait,
   emit:     TokenKind.KwEmit,
   requires: TokenKind.KwRequires,
+  handle:   TokenKind.KwHandle,
   hot:      TokenKind.KwHot,
   migrate:  TokenKind.KwMigrate,
   from:     TokenKind.KwFrom,

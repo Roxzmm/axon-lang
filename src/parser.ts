@@ -892,6 +892,25 @@ export class Parser {
       return { kind: 'Loop', body, span };
     }
 
+    // handle Effect { name: handler, ... } in { body }
+    if (tok.kind === TokenKind.KwHandle) {
+      this.advance();
+      const effect = this.expectIdent();
+      this.expect(TokenKind.LBrace);
+      const handlers: Array<{ name: string; handler: Expr }> = [];
+      while (!this.check(TokenKind.RBrace) && !this.check(TokenKind.EOF)) {
+        const name = this.expectIdent();
+        this.expect(TokenKind.Colon);
+        const handler = this.parseExpr();
+        handlers.push({ name, handler });
+        if (this.check(TokenKind.Comma)) this.advance();
+      }
+      this.expect(TokenKind.RBrace);
+      this.expect(TokenKind.KwIn);
+      const body = this.parseBlock();
+      return { kind: 'HandleExpr', effect, handlers, body, span };
+    }
+
     // spawn
     if (tok.kind === TokenKind.KwSpawn) {
       this.advance();

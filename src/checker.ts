@@ -702,6 +702,13 @@ export class TypeChecker {
         return T_UNKNOWN;
       }
 
+      case 'HandleExpr': {
+        for (const h of expr.handlers) this.checkExpr(h.handler, env);
+        const handlerEnv = env.child();
+        for (const h of expr.handlers) handlerEnv.define(h.name, T_UNKNOWN);
+        return this.checkExpr(expr.body, handlerEnv);
+      }
+
       default: return T_UNKNOWN;
     }
   }

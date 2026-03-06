@@ -71,6 +71,7 @@ export type Expr =
   | { kind: 'Loop';         body: Expr; span: Span }
   | { kind: 'Range';        lo: Expr; hi: Expr; inclusive: boolean; span: Span }
   | { kind: 'IfLet';        pat: Pattern; value: Expr; then: Expr; else_: Expr | null; span: Span }
+  | { kind: 'HandleExpr';  effect: string; handlers: Array<{ name: string; handler: Expr }>; body: Expr; span: Span }
 
 export interface MatchArm {
   pattern: Pattern;

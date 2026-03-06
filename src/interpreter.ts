@@ -75,6 +75,9 @@ export class Interpreter {
   private agentDeclRegistry = new Map<string, AgentDecl>();
   // impl blocks: typeName → methodName → fn value
   private methodRegistry = new Map<string, Map<string, AxonValue>>();
+  // Effect handler stack: each entry is a map from fn-name → handler value.
+  // Handlers are checked (top-to-bottom) before env/stdlib lookup in evalIdent.
+  private handlerStack: Map<string, AxonValue>[] = [];
   private moduleRegistry = new ModuleRegistry();
   private builtinNames = new Set<string>();
   // Module system: maps resolved module path → exported env
@@ -1081,13 +1084,34 @@ export class Interpreter {
         return mkList(items);
       }
 
+      case 'HandleExpr': {
+        // Build handler map and push onto the handler stack.
+        // evalIdent checks the stack before env/stdlib lookup, so all calls to
+        // handler-named functions — including transitive calls — are intercepted.
+        const handlers = new Map<string, AxonValue>();
+        for (const h of expr.handlers) {
+          handlers.set(h.name, await this.evalExpr(h.handler, env));
+        }
+        this.handlerStack.push(handlers);
+        try {
+          return await this.evalExpr(expr.body, env);
+        } finally {
+          this.handlerStack.pop();
+        }
+      }
+
       default:
         throw new RuntimeError(`Unknown expression kind: ${(expr as any).kind}`);
     }
   }
 
   private evalIdent(name: string, env: Environment): AxonValue {
-    // Try local scope first
+    // Check effect handler stack first (innermost handler wins) — dynamic dispatch
+    for (let i = this.handlerStack.length - 1; i >= 0; i--) {
+      const h = this.handlerStack[i].get(name);
+      if (h !== undefined) return h;
+    }
+    // Try local scope
     const local = env.tryGet(name);
     if (local !== undefined) return local;
     // Try global

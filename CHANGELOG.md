@@ -9,6 +9,46 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.0] - 2026-03-06
+
+### Language — Algebraic Effect Handlers (`handle/in`)
+
+New `handle Effect { ... } in { ... }` expression for intercepting effectful function calls:
+
+```axon
+let result = handle IO {
+  read_file: |path| { $"mock:{path}" },
+  write_file: |path, content| { Ok(()) }
+} in {
+  some_function_that_does_io()  // read_file/write_file intercepted here
+}
+```
+
+**Semantics:**
+- Handlers are pushed to an interpreter-level stack on entry; popped on exit
+- `evalIdent` checks handler stack (innermost first) before env/stdlib lookup
+- Enables **dynamic scoping** of effects: transitive calls are also intercepted
+- Nested `handle` blocks work correctly (inner handler shadows outer)
+- Handler expressions may be lambdas, stored variables, or any expression
+- Handler closures capture surrounding lexical scope normally
+
+**Use cases:**
+- Mock IO/Network/LLM during testing without modifying tested functions
+- Provide deterministic stubs for non-deterministic effects
+- Intercept and log/trace all calls to specific functions in a scope
+
+### Implementation
+- **Lexer**: `KwHandle = 'handle'` keyword added
+- **AST**: `HandleExpr { effect, handlers[], body }` added to `Expr` union
+- **Parser**: `parsePrimary()` handles `handle Ident { name: expr, ... } in { body }`
+- **Interpreter**: Handler stack (`handlerStack: Map<string,AxonValue>[]`) checked in `evalIdent` before env/stdlib lookup; push/pop via `try/finally` in `HandleExpr` eval
+- **Checker**: Checks all handler exprs and body; handler names visible as `Unknown` type in body env
+
+### Tests
+- Added test 35: `35_effect_handlers.axon` — 6 scenarios: basic override, multiple handlers, nested handlers, closure capture, lambda variable, block logic in handler body; all 35 tests pass
+
+---
+
 ## [0.3.0] - 2026-03-03
 
 ### Lexer
