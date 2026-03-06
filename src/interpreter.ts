@@ -731,6 +731,53 @@ export class Interpreter {
     }
   }
 
+  // Run all #[test]-annotated functions and return results
+  async runTests(program: Program, filePath?: string): Promise<Array<{ name: string; passed: boolean; error?: string }>> {
+    if (filePath) this.currentFile = filePath;
+    // First pass: register everything
+    for (const item of program.items) {
+      if (item.kind === 'FnDecl' && item.body) {
+        const val = this.makeFunction(item);
+        this.globalEnv.define(item.name, val);
+      }
+      if (item.kind === 'TypeDecl') this.registerType(item);
+      if (item.kind === 'ImplDecl') this.registerImpl(item);
+      if (item.kind === 'AgentDecl') this.agentDeclRegistry.set(item.name, item);
+      if (item.kind === 'ConstDecl') {
+        const val = await this.evalExpr(item.value, this.globalEnv);
+        this.globalEnv.define(item.name, val);
+      }
+    }
+    // Collect #[test] functions
+    const testFns = program.items
+      .filter(item => item.kind === 'FnDecl' && item.annots.some(a => a === 'test' || a.startsWith('test(')))
+      .map(item => item as import('./ast').FnDecl);
+
+    const results: Array<{ name: string; passed: boolean; error?: string }> = [];
+    for (const decl of testFns) {
+      const fn = this.globalEnv.tryGet(decl.name);
+      if (!fn) continue;
+      try {
+        await this.callValueAsync(fn, []);
+        results.push({ name: decl.name, passed: true });
+      } catch (e) {
+        results.push({ name: decl.name, passed: false, error: (e instanceof Error ? e.message : String(e)).split('\n')[0] });
+      }
+    }
+    return results;
+  }
+
+  private makeFunction(decl: import('./ast').FnDecl): AxonValue {
+    return {
+      tag: ValueTag.Function,
+      name: decl.name,
+      params: decl.params,
+      body: decl.body!,
+      closure: this.globalEnv,
+      isRecursive: true,
+    };
+  }
+
   private async handleUseDecl(decl: import('./ast').UseDecl): Promise<void> {
     // Convert PascalCase segments to snake_case for file resolution
     // e.g. Lib.MathUtils → lib/math_utils.axon

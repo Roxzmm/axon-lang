@@ -1,0 +1,45 @@
+module Test
+
+// Test 43: #[test] annotation for individual test functions
+// When a file has #[test] functions, axon test runs each independently.
+// This file itself uses #[test] and is run as individual test cases.
+
+fn add(a: Int, b: Int) -> Int { a + b }
+fn mul(a: Int, b: Int) -> Int { a * b }
+
+#[test]
+fn test_addition() -> Unit {
+    assert_eq(add(1, 2), 3, "1+2=3")
+    assert_eq(add(0, 0), 0, "0+0=0")
+    assert_eq(add(-1, 1), 0, "-1+1=0")
+}
+
+#[test]
+fn test_multiplication() -> Unit {
+    assert_eq(mul(3, 4), 12, "3*4=12")
+    assert_eq(mul(0, 99), 0, "0*anything=0")
+    assert_eq(mul(-2, 5), -10, "-2*5=-10")
+}
+
+#[test]
+fn test_string_ops() -> Unit {
+    let s = "hello"
+    assert_eq(len(s), 5, "len=5")
+    assert(contains(s, "ell"), "contains ell")
+    assert_eq(upper(s), "HELLO", "upper")
+}
+
+#[test]
+fn test_list_ops() -> Unit {
+    let xs = [1, 2, 3, 4, 5]
+    assert_eq(list_len(xs), 5, "list len")
+    assert_eq(list_sum(xs), 15, "list sum")
+    let filtered = list_filter(xs, |x| x > 2)
+    assert_eq(filtered, [3, 4, 5], "filter >2")
+}
+
+// A plain main() is optional when #[test] is used
+fn main() -> Unit {
+    print("Test 43: #[test] annotation file ran as whole program")
+    print("(When run via axon test, individual test fns are called)")
+}

@@ -1,7 +1,7 @@
 # Axon Language Specification
 
-**Version**: 0.2
-**Status**: Active design — prototype implementation exists (TypeScript interpreter, 25 tests passing)
+**Version**: 0.5
+**Status**: Active development — TypeScript interpreter, 46 tests passing (43 files; file 43 uses #[test])
 **Authoritative principles**: see `spec/PRINCIPLES.md`
 
 > When this document conflicts with `PRINCIPLES.md`, `PRINCIPLES.md` wins.

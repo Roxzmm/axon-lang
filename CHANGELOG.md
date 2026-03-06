@@ -9,6 +9,43 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.5.0] - 2026-03-07
+
+### `#[test]` annotation — Per-function test cases
+
+Individual functions can now be annotated as test cases:
+
+```axon
+module MyModule
+
+fn add(a: Int, b: Int) -> Int { a + b }
+
+#[test]
+fn test_addition() -> Unit {
+    assert_eq(add(1, 2), 3, "basic addition")
+    assert_eq(add(-1, 1), 0, "negative")
+}
+
+#[test]
+fn test_edge_cases() -> Unit {
+    assert_eq(add(0, 0), 0, "zeros")
+}
+```
+
+Running `axon test`:
+```
+✓ my_module.axon::test_addition     (1ms)
+✓ my_module.axon::test_edge_cases   (1ms)
+```
+
+**Behavior:**
+- Files with `#[test]` functions: each annotated function is run independently
+- Files without `#[test]` (only `fn main()`): whole file runs as a single test
+- Per-function pass/fail reporting with `file::test_name` format
+- If a `#[test]` function throws, that function fails; others continue
+
+---
+
 ## [0.4.9] - 2026-03-07
 
 ### Regex stdlib

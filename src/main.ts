@@ -34,7 +34,7 @@ function c(color: keyof typeof C, s: string): string {
 function printBanner(): void {
   console.log(c('cyan', c('bold', `
   ╔═══════════════════════════════════════╗
-  ║   Axon Language Interpreter v0.4.9    ║
+  ║   Axon Language Interpreter v0.5.0    ║
   ║   AI-Native Programming Language      ║
   ╚═══════════════════════════════════════╝`)));
   console.log();
@@ -585,29 +585,69 @@ async function main(): Promise<void> {
         const source = fs.readFileSync(f, 'utf-8');
         let ok = true;
         let errMsg = '';
+        let prog: ReturnType<typeof parse>;
         try {
-          const prog = parse(source, f);
+          prog = parse(source, f);
           const diags = typeCheck(prog).filter(d => d.level === 'error');
           if (diags.length > 0) throw new Error(diags[0].message);
-          const interp = new Interpreter();
-          // Suppress stdout during test run (capture it)
-          const origWrite = process.stdout.write.bind(process.stdout);
-          const captured: string[] = [];
-          (process.stdout as any).write = (s: string) => { captured.push(s); return true; };
-          try {
-            await interp.execute(prog, f);
-          } finally {
-            (process.stdout as any).write = origWrite;
-          }
         } catch (e) {
           ok = false;
           errMsg = (e instanceof Error ? e.message : String(e)).split('\n')[0];
+          const ms = Date.now() - start;
+          console.log(`  ${c('red', '✗')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
+          console.log(`    ${c('red', errMsg)}`);
+          failures.push({ file: basename, error: errMsg });
+          failed++;
+          continue;
         }
-        const ms = Date.now() - start;
-        if (ok) {
-          console.log(`  ${c('green', '✓')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
-          passed++;
-        } else {
+
+        // Check if file has #[test] functions
+        const hasTestAnnot = prog.items.some(item =>
+          item.kind === 'FnDecl' && item.annots.some(a => a === 'test' || a.startsWith('test(')));
+
+        // Suppress stdout
+        const origWrite = process.stdout.write.bind(process.stdout);
+        (process.stdout as any).write = (_s: string) => true;
+
+        try {
+          const interp = new Interpreter();
+          if (hasTestAnnot) {
+            // Run individual #[test] functions
+            const testResults = await interp.runTests(prog, f);
+            (process.stdout as any).write = origWrite;
+            if (testResults.length === 0) {
+              const ms = Date.now() - start;
+              console.log(`  ${c('yellow', '○')} ${basename}  ${c('gray', `no #[test] functions (${ms}ms)`)}`);
+              passed++;
+            } else {
+              let filePassed = true;
+              for (const tr of testResults) {
+                const ms2 = Date.now() - start;
+                if (tr.passed) {
+                  console.log(`  ${c('green', '✓')} ${basename}::${tr.name}  ${c('gray', `(${ms2}ms)`)}`);
+                  passed++;
+                } else {
+                  console.log(`  ${c('red', '✗')} ${basename}::${tr.name}  ${c('gray', `(${ms2}ms)`)}`);
+                  console.log(`    ${c('red', tr.error ?? 'failed')}`);
+                  failures.push({ file: `${basename}::${tr.name}`, error: tr.error ?? 'failed' });
+                  failed++;
+                  filePassed = false;
+                }
+              }
+            }
+          } else {
+            // Run whole file as single test
+            await interp.execute(prog, f);
+            (process.stdout as any).write = origWrite;
+            const ms = Date.now() - start;
+            console.log(`  ${c('green', '✓')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
+            passed++;
+          }
+        } catch (e) {
+          (process.stdout as any).write = origWrite;
+          ok = false;
+          errMsg = (e instanceof Error ? e.message : String(e)).split('\n')[0];
+          const ms = Date.now() - start;
           console.log(`  ${c('red', '✗')} ${basename}  ${c('gray', `(${ms}ms)`)}`);
           console.log(`    ${c('red', errMsg)}`);
           failures.push({ file: basename, error: errMsg });

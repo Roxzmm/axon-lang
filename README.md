@@ -313,6 +313,9 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Capability system (`agent requires` + `spawn with [Cap]`) | ✅ Complete |
 | Channel primitives (`channel`, `chan_send/recv`, `pipeline`) | ✅ Complete |
 | Trace replay (`axon replay <trace.jsonl> <program>`) | ✅ Complete |
+| Built-in test runner (`axon test [dir]`) | ✅ Complete |
+| `#[test]` annotation — per-function test cases | ✅ Complete |
+| Regex stdlib (`regex_match/test/replace/split`) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 
