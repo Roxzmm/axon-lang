@@ -915,15 +915,28 @@ export class Parser {
     if (tok.kind === TokenKind.KwSpawn) {
       this.advance();
       const agentName = this.expectIdent();
+      const spawnLine = this.tokens[this.pos - 1]?.line ?? 0;
+      // Optional capability grant: spawn AgentName with [Cap1, Cap2, ...]
+      let caps: string[] | null = null;
+      if (this.check(TokenKind.KwWith) && this.cur().line === spawnLine) {
+        this.advance();
+        this.expect(TokenKind.LBracket);
+        caps = [];
+        while (!this.check(TokenKind.RBracket) && !this.check(TokenKind.EOF)) {
+          caps.push(this.expectIdent());
+          if (this.check(TokenKind.Comma)) this.advance();
+        }
+        this.expect(TokenKind.RBracket);
+      }
       // Optional timeout modifier: spawn AgentName timeout(ms)
       let timeout: Expr | null = null;
-      if (this.check(TokenKind.KwTimeout) && this.cur().line === this.tokens[this.pos - 1]?.line) {
+      if (this.check(TokenKind.KwTimeout) && this.cur().line === spawnLine) {
         this.advance();
         this.expect(TokenKind.LParen);
         timeout = this.parseExpr();
         this.expect(TokenKind.RParen);
       }
-      return { kind: 'Spawn', agentName, initMsg: null, timeout, span };
+      return { kind: 'Spawn', agentName, initMsg: null, timeout, caps, span };
     }
 
     // Ok(e) / Err(e) / Some(e)

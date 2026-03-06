@@ -310,6 +310,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Algebraic effect handlers (`handle/in`) | ✅ Complete |
 | Agent execution timeout (`spawn Foo timeout(ms)`) | ✅ Complete |
 | Trace mode (`--trace` / `--trace-file`, JSONL) | ✅ Complete |
+| Capability system (`agent requires` + `spawn with [Cap]`) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 

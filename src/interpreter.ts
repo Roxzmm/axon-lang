@@ -80,6 +80,9 @@ export class Interpreter {
   private handlerStack: Map<string, AxonValue>[] = [];
   private moduleRegistry = new ModuleRegistry();
   private builtinNames = new Set<string>();
+  // Capability stack: when inside an agent handler with granted caps, restrict operations
+  // null entry = unconstrained (spawned without `with [...]`)
+  private capabilityStack: Array<Set<string> | null> = [];
   // Trace support: when set, emit JSONL trace events for effectful operations
   private tracer: ((event: Record<string, unknown>) => void) | null = null;
   // Functions that are interesting enough to trace (effectful/impure)
@@ -94,6 +97,38 @@ export class Interpreter {
     'json_parse', 'json_stringify', 'json_stringify_pretty',
     'ask_all', 'ask_any', 'tool_list', 'tool_schema',
   ]);
+
+  // Capability → required capability name mapping (function name → cap name)
+  private static readonly CAPABILITY_MAP: Record<string, string> = {
+    'http_get':          'NetworkHTTP',
+    'http_post':         'NetworkHTTP',
+    'http_get_json':     'NetworkHTTP',
+    'http_delete':       'NetworkHTTP',
+    'read_file':         'FileRead',
+    'file_exists':       'FileRead',
+    'write_file':        'FileWrite',
+    'append_file':       'FileWrite',
+    'llm_call':          'LLMAccess',
+    'llm_structured':    'LLMAccess',
+    'agent_tool_loop':   'LLMAccess',
+    'env_get':           'EnvRead',
+    'env_all':           'EnvRead',
+    'args':              'EnvRead',
+    'env_set':           'EnvWrite',
+  };
+
+  private checkCapability(fnName: string): void {
+    if (this.capabilityStack.length === 0) return;  // not in agent handler context
+    const topCaps = this.capabilityStack[this.capabilityStack.length - 1];
+    if (topCaps === null) return;  // unconstrained agent (spawned without `with`)
+    const required = Interpreter.CAPABILITY_MAP[fnName];
+    if (required && !topCaps.has(required)) {
+      throw new RuntimeError(
+        `CapabilityError: '${fnName}' requires capability '${required}', ` +
+        `but this agent was only granted: [${[...topCaps].join(', ')}]`
+      );
+    }
+  }
 
   enableTrace(traceFile?: string): void {
     if (traceFile) {
@@ -1045,12 +1080,31 @@ export class Interpreter {
           state.set(sf.name, await this.evalExpr(sf.default_, this.globalEnv));
         }
 
-        // Build handlers
+        // Resolve granted capabilities (null = unconstrained)
+        const grantedCaps: Set<string> | null = expr.caps ? new Set(expr.caps) : null;
+
+        // Validate: if agent requires caps and a `with` list is given, all required caps must be granted
+        if (grantedCaps && decl.requires.length > 0) {
+          const missing = decl.requires.filter(r => !grantedCaps.has(r));
+          if (missing.length > 0) {
+            throw new RuntimeError(
+              `CapabilityError: agent '${decl.name}' requires [${decl.requires.join(', ')}] ` +
+              `but spawn only granted [${[...grantedCaps].join(', ')}]. Missing: [${missing.join(', ')}]`
+            );
+          }
+        }
+
+        // Build handlers — wrap each to push/pop capability context
         const handlers = new Map<string, AgentHandlerFn>();
         for (let i = 0; i < decl.handlers.length; i++) {
           const idx = i;
           handlers.set(decl.handlers[i].msgType, async (agentState, args) => {
-            return this.evalAgentHandler(decl, idx, agentState, args);
+            this.capabilityStack.push(grantedCaps);
+            try {
+              return await this.evalAgentHandler(decl, idx, agentState, args);
+            } finally {
+              this.capabilityStack.pop();
+            }
           });
         }
 
@@ -1061,7 +1115,7 @@ export class Interpreter {
           if (tv.tag === ValueTag.Int) timeoutMs = Number(tv.value);
           else if (tv.tag === ValueTag.Float) timeoutMs = tv.value;
         }
-        const ref = new AgentRef(decl.name, state, handlers, timeoutMs);
+        const ref = new AgentRef(decl.name, state, handlers, timeoutMs, grantedCaps);
         const { registerAgent } = await import('./runtime/agent');
         registerAgent(ref);
 
@@ -1615,6 +1669,7 @@ export class Interpreter {
 
   async callValueAsync(fn: AxonValue, args: AxonValue[]): Promise<AxonValue> {
     if (fn.tag === ValueTag.NativeFn) {
+      this.checkCapability(fn.name);
       if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
         const result = fn.fn(...args);
         this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });
@@ -1623,6 +1678,7 @@ export class Interpreter {
       return fn.fn(...args);
     }
     if (fn.tag === ValueTag.AsyncNativeFn) {
+      this.checkCapability(fn.name);
       if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
         const result = await fn.fn(...args);
         this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });

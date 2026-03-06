@@ -9,6 +9,50 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.3] - 2026-03-06
+
+### Agent — Capability System (`requires` / `spawn with [Cap]`)
+
+Agents can now declare required capabilities, enforced at spawn time and per-handler call:
+
+```axon
+agent FileReader {
+    requires FileRead
+    state { last_read: String = "" }
+
+    on ReadPath(path: String) -> String | IO {
+        last_read = read_file(path)
+        last_read
+    }
+}
+
+fn main() -> Unit {
+    // Spawn with matching caps — succeeds
+    let reader = spawn FileReader with [FileRead]
+
+    // Spawn with missing caps — CapabilityError at spawn time
+    // let bad = spawn FileReader with [NetworkHTTP]  // ERROR
+}
+```
+
+**Capabilities defined:**
+| Capability | Grants access to |
+|---|---|
+| `FileRead` | `read_file`, `file_exists` |
+| `FileWrite` | `write_file`, `append_file` |
+| `NetworkHTTP` | `http_get`, `http_post`, `http_get_json`, `http_delete` |
+| `LLMAccess` | `llm_call`, `llm_structured`, `agent_tool_loop` |
+| `EnvRead` | `env_get`, `env_all`, `args` |
+| `EnvWrite` | `env_set` |
+
+**Enforcement:**
+- **Spawn-time**: if `spawn Foo with [caps]` and `caps ⊄ requires`, throws `CapabilityError` immediately
+- **Runtime**: handler calls a stdlib function not covered by granted caps → `CapabilityError`
+- **Unconstrained**: `spawn Foo` without `with [...]` = no capability restriction (backwards-compatible)
+- **Superset**: granting more caps than required is allowed
+
+---
+
 ## [0.4.2] - 2026-03-06
 
 ### CLI — `--trace` / `--trace-file` Deterministic Trace Mode

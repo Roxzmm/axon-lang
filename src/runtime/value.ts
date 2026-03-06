@@ -108,16 +108,19 @@ export class AgentRef {
   public handlers:   Map<string, AgentHandlerFn>;
   public name:       string;
   public id:         string;
-  public timeoutMs:  number | null;
+  public timeoutMs:   number | null;
+  // null = unconstrained (no capability check); Set = only these caps are granted
+  public grantedCaps: Set<string> | null;
   // Supervisor callback: called when a handler throws an unhandled error
   public onCrash?: (ref: AgentRef, error: Error) => void;
 
-  constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>, timeoutMs: number | null = null) {
-    this.name      = name;
-    this.id        = `${name}#${Math.random().toString(36).slice(2, 8)}`;
-    this.state     = state;
-    this.handlers  = handlers;
-    this.timeoutMs = timeoutMs;
+  constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>, timeoutMs: number | null = null, grantedCaps: Set<string> | null = null) {
+    this.name        = name;
+    this.id          = `${name}#${Math.random().toString(36).slice(2, 8)}`;
+    this.state       = state;
+    this.handlers    = handlers;
+    this.timeoutMs   = timeoutMs;
+    this.grantedCaps = grantedCaps;
   }
 
   stop(): void { this.stopped = true; }
