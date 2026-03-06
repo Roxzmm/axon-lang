@@ -34,7 +34,7 @@ function c(color: keyof typeof C, s: string): string {
 function printBanner(): void {
   console.log(c('cyan', c('bold', `
   ╔═══════════════════════════════════════╗
-  ║   Axon Language Interpreter v0.4.1    ║
+  ║   Axon Language Interpreter v0.4.2    ║
   ║   AI-Native Programming Language      ║
   ╚═══════════════════════════════════════╝`)));
   console.log();
@@ -61,7 +61,7 @@ function printDiagnostics(diagnostics: Diagnostic[], source: string, file: strin
 
 // ─── Run command ─────────────────────────────────────────────
 
-async function runFile(filePath: string, opts: { watch?: boolean; typeCheck?: boolean; strictEffects?: boolean }): Promise<void> {
+async function runFile(filePath: string, opts: { watch?: boolean; typeCheck?: boolean; strictEffects?: boolean; trace?: boolean; traceFile?: string }): Promise<void> {
   const abs    = path.resolve(filePath);
   const source = fs.readFileSync(abs, 'utf-8');
 
@@ -112,6 +112,9 @@ async function runFile(filePath: string, opts: { watch?: boolean; typeCheck?: bo
 
   // Execute
   const interpreter = new Interpreter();
+  if (opts.trace || opts.traceFile) {
+    interpreter.enableTrace(opts.traceFile);
+  }
 
   if (opts.watch) {
     console.log(c('cyan', `Starting in watch mode...`));
@@ -514,8 +517,11 @@ async function main(): Promise<void> {
       const watch         = args.includes('--watch') || args.includes('-w');
       const noType        = args.includes('--no-check');
       const strictEffects = args.includes('--strict-effects');
-      if (!file) { console.error('Usage: axon run <file.axon> [--watch] [--strict-effects]'); process.exit(1); }
-      await runFile(file, { watch, typeCheck: !noType, strictEffects });
+      const trace         = args.includes('--trace');
+      const traceFileIdx  = args.indexOf('--trace-file');
+      const traceFile     = traceFileIdx !== -1 ? args[traceFileIdx + 1] : undefined;
+      if (!file) { console.error('Usage: axon run <file.axon> [--watch] [--strict-effects] [--trace] [--trace-file <path>]'); process.exit(1); }
+      await runFile(file, { watch, typeCheck: !noType, strictEffects, trace, traceFile });
       break;
     }
 
@@ -543,9 +549,11 @@ ${c('cyan', 'Commands:')}
   repl           Start interactive REPL
 
 ${c('cyan', 'Options for run:')}
-  --watch, -w       Enable hot reload (watch for file changes)
-  --no-check        Skip type checking
-  --strict-effects  Enforce effect declarations on ALL functions (not just annotated ones)
+  --watch, -w          Enable hot reload (watch for file changes)
+  --no-check           Skip type checking
+  --strict-effects     Enforce effect declarations on ALL functions (not just annotated ones)
+  --trace              Emit JSONL trace events for effectful operations to stderr
+  --trace-file <path>  Emit JSONL trace events to a file (instead of stderr)
 
 ${c('cyan', 'Examples:')}
   axon run demo/counter.axon
@@ -557,9 +565,13 @@ ${c('cyan', 'Examples:')}
     }
 
     default: {
-      // Treat as a file path
+      // Treat as a file path (with optional flags)
       if (fs.existsSync(command)) {
-        await runFile(command, {});
+        const trace        = args.includes('--trace');
+        const traceFileIdx = args.indexOf('--trace-file');
+        const traceFile    = traceFileIdx !== -1 ? args[traceFileIdx + 1] : undefined;
+        const strictEffects = args.includes('--strict-effects');
+        await runFile(command, { trace, traceFile, strictEffects });
       } else {
         console.error(`Unknown command: '${command}'. Run 'axon help' for usage.`);
         process.exit(1);

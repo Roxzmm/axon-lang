@@ -1,0 +1,33 @@
+module Test
+
+// Test 37: --trace flag — JSONL trace events for effectful operations
+// This file is run with --trace-file to capture trace output,
+// then the test verifies the trace file contains expected events.
+// (Tested via external shell script; this file just needs to run cleanly.)
+
+agent Greeter {
+    state { }
+    on Greet(name: String) -> String {
+        $"Hello, {name}!"
+    }
+}
+
+fn main() -> Unit {
+    // Agent ask → should produce agent_ask + agent_reply trace events
+    let g = spawn Greeter
+    let msg = g.ask(Greet("World"))
+    assert(msg == "Hello, World!", "greeter works")
+    print($"Greeter: {msg}")
+
+    // Effect handler → should produce handle_enter + effect_handler + handle_exit
+    let mock_result = handle IO {
+        read_file: |path| { $"traced:{path}" }
+    } in {
+        read_file("/data")
+    }
+    assert(mock_result == "traced:/data", "effect handler works")
+    print($"Handler: {mock_result}")
+
+    // print calls → should appear as call events in trace
+    print("All trace test functions executed.")
+}

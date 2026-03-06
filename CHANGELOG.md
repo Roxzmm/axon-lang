@@ -9,6 +9,49 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.2] - 2026-03-06
+
+### CLI — `--trace` / `--trace-file` Deterministic Trace Mode
+
+All effectful operations can now be recorded as JSONL trace events:
+
+```bash
+# Trace to stderr
+axon run my_agent.axon --trace
+
+# Trace to file (for replay/analysis)
+axon run my_agent.axon --trace-file agent_run.jsonl
+```
+
+**Trace event types (JSONL, one per line):**
+- `call` — native stdlib function invoked: `{"ts":ms,"event":"call","fn":"read_file","args":[...],"result":"..."}`
+- `agent_ask` — `agent.ask(Msg)`: `{"ts":ms,"event":"agent_ask","agent":"Name","msg":"Greet","args":[...]}`
+- `agent_reply` — response from ask: `{"ts":ms,"event":"agent_reply","agent":"Name","msg":"Greet","result":"..."}`
+- `agent_send` — fire-and-forget send: `{"ts":ms,"event":"agent_send","agent":"Name","msg":"Reset","args":[]}`
+- `handle_enter` / `handle_exit` — effect handler scope entered/exited
+- `effect_handler` — handler invoked instead of actual stdlib function
+
+**Traced functions** (effectful/impure): `read_file`, `write_file`, `http_get`, `http_post`, `llm_call`, `llm_structured`, `env_get`, `env_set`, `sleep_ms`, `sleep`, `now_ms`, `print`, `random`, `random_int`, `json_parse`, `json_stringify`, `tool_call`, `ask_all`, `ask_any`, and more.
+
+Pure functions (arithmetic, string manipulation, etc.) are NOT traced.
+
+**Use cases:**
+- Debug AI agent decision paths
+- Audit which LLM calls were made and with what args
+- Replay agent runs for regression testing
+
+### Implementation
+- `Interpreter.enableTrace(traceFile?)` method — sets up tracer writing to stderr or file
+- `Interpreter.emitTrace(event)` — internal emit method
+- `Interpreter.TRACE_FNS` — static set of traceable function names
+- Tracing points: `callValueAsync` (native fns), `evalMethodCall` (agent send/ask), `HandleExpr` (effect handlers)
+- `--trace` / `--trace-file <path>` flags added to `run` command and direct-file invocation
+
+### Tests
+- Added test 37: `37_trace.axon` — runs agent ask and effect handler; all 37 tests pass
+
+---
+
 ## [0.4.1] - 2026-03-06
 
 ### Language — Agent Execution Timeout (`spawn Agent timeout(ms)`)

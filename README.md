@@ -309,6 +309,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | `$"""..."""` interpolated triple-quoted strings | ✅ Complete |
 | Algebraic effect handlers (`handle/in`) | ✅ Complete |
 | Agent execution timeout (`spawn Foo timeout(ms)`) | ✅ Complete |
+| Trace mode (`--trace` / `--trace-file`, JSONL) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 

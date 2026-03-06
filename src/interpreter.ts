@@ -80,6 +80,34 @@ export class Interpreter {
   private handlerStack: Map<string, AxonValue>[] = [];
   private moduleRegistry = new ModuleRegistry();
   private builtinNames = new Set<string>();
+  // Trace support: when set, emit JSONL trace events for effectful operations
+  private tracer: ((event: Record<string, unknown>) => void) | null = null;
+  // Functions that are interesting enough to trace (effectful/impure)
+  private static readonly TRACE_FNS = new Set([
+    'read_file', 'write_file', 'file_exists', 'append_file',
+    'http_get', 'http_post', 'http_get_json', 'http_delete',
+    'llm_call', 'llm_structured', 'agent_tool_loop', 'tool_call',
+    'env_get', 'env_set', 'env_all', 'args',
+    'sleep_ms', 'sleep', 'now_ms', 'now_s', 'timestamp',
+    'print', 'println', 'eprint', 'eprintln',
+    'random', 'random_int', 'random_bool',
+    'json_parse', 'json_stringify', 'json_stringify_pretty',
+    'ask_all', 'ask_any', 'tool_list', 'tool_schema',
+  ]);
+
+  enableTrace(traceFile?: string): void {
+    if (traceFile) {
+      const fs = require('fs') as typeof import('fs');
+      const stream = fs.createWriteStream(traceFile, { flags: 'a' });
+      this.tracer = (event) => stream.write(JSON.stringify(event) + '\n');
+    } else {
+      this.tracer = (event) => process.stderr.write(JSON.stringify(event) + '\n');
+    }
+  }
+
+  private emitTrace(event: Record<string, unknown>): void {
+    if (this.tracer) this.tracer({ ts: Date.now(), ...event });
+  }
   // Module system: maps resolved module path → exported env
   private loadedModules = new Map<string, Environment>();
   private currentFile: string | null = null;
@@ -1095,15 +1123,30 @@ export class Interpreter {
         // Build handler map and push onto the handler stack.
         // evalIdent checks the stack before env/stdlib lookup, so all calls to
         // handler-named functions — including transitive calls — are intercepted.
+        const handlerNames = expr.handlers.map(h => h.name);
+        this.emitTrace({ event: 'handle_enter', effect: expr.effect, handlers: handlerNames });
         const handlers = new Map<string, AxonValue>();
         for (const h of expr.handlers) {
-          handlers.set(h.name, await this.evalExpr(h.handler, env));
+          const handlerVal = await this.evalExpr(h.handler, env);
+          // Wrap handler to emit trace events when invoked
+          if (this.tracer) {
+            const handlerName = h.name;
+            const orig = handlerVal;
+            const effect = expr.effect;
+            handlers.set(handlerName, mkNativeAsync(`handler:${handlerName}`, async (...args: AxonValue[]) => {
+              this.emitTrace({ event: 'effect_handler', effect, fn: handlerName, args: args.map(displayValue) });
+              return this.callValueAsync(orig, args);
+            }));
+          } else {
+            handlers.set(h.name, handlerVal);
+          }
         }
         this.handlerStack.push(handlers);
         try {
           return await this.evalExpr(expr.body, env);
         } finally {
           this.handlerStack.pop();
+          this.emitTrace({ event: 'handle_exit', effect: expr.effect });
         }
       }
 
@@ -1572,9 +1615,19 @@ export class Interpreter {
 
   async callValueAsync(fn: AxonValue, args: AxonValue[]): Promise<AxonValue> {
     if (fn.tag === ValueTag.NativeFn) {
+      if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
+        const result = fn.fn(...args);
+        this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });
+        return result;
+      }
       return fn.fn(...args);
     }
     if (fn.tag === ValueTag.AsyncNativeFn) {
+      if (this.tracer && Interpreter.TRACE_FNS.has(fn.name)) {
+        const result = await fn.fn(...args);
+        this.emitTrace({ event: 'call', fn: fn.name, args: args.map(displayValue), result: displayValue(result) });
+        return result;
+      }
       return fn.fn(...args);
     }
 
@@ -1647,12 +1700,16 @@ export class Interpreter {
     if (obj.tag === ValueTag.Agent) {
       if (method === 'send') {
         const [msgType, msgArgs] = extractMsg(args[0]);
+        this.emitTrace({ event: 'agent_send', agent: obj.ref.name, msg: msgType, args: msgArgs.map(displayValue) });
         obj.ref.send(msgType, msgArgs);
         return UNIT;
       }
       if (method === 'ask') {
         const [msgType, msgArgs] = extractMsg(args[0]);
-        return obj.ref.ask(msgType, msgArgs);
+        this.emitTrace({ event: 'agent_ask', agent: obj.ref.name, msg: msgType, args: msgArgs.map(displayValue) });
+        const result = await obj.ref.ask(msgType, msgArgs);
+        this.emitTrace({ event: 'agent_reply', agent: obj.ref.name, msg: msgType, result: displayValue(result) });
+        return result;
       }
       if (method === 'stop') {
         const { stopAgent } = await import('./runtime/agent');
