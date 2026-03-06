@@ -265,6 +265,16 @@ export class TypeChecker {
     // Multi-agent orchestration
     this.typeEnv.define('ask_all',             { kind: 'Fn', params: [U, U], ret: { kind: 'List', elem: U }, effects: [] });
     this.typeEnv.define('ask_any',             { kind: 'Fn', params: [U, U], ret: U, effects: [] });
+    this.typeEnv.define('pipeline',            { kind: 'Fn', params: [U, U], ret: U, effects: [] });
+    // Channel primitives
+    this.typeEnv.define('channel',             { kind: 'Fn', params: [U], ret: U, effects: [] });
+    this.typeEnv.define('chan_send',           { kind: 'Fn', params: [U, U], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('chan_recv',           { kind: 'Fn', params: [U], ret: U, effects: [] });
+    this.typeEnv.define('chan_try_recv',       { kind: 'Fn', params: [U], ret: U, effects: [] });
+    this.typeEnv.define('chan_try_send',       { kind: 'Fn', params: [U, U], ret: T_BOOL, effects: [] });
+    this.typeEnv.define('chan_close',          { kind: 'Fn', params: [U], ret: T_UNIT, effects: [] });
+    this.typeEnv.define('chan_is_closed',      { kind: 'Fn', params: [U], ret: T_BOOL, effects: [] });
+    this.typeEnv.define('chan_size',           { kind: 'Fn', params: [U], ret: T_INT, effects: [] });
     // Test / introspection helpers
     this.typeEnv.define('interpreter_hot_reload', { kind: 'Fn', params: [U], ret: T_UNIT, effects: [] });
 

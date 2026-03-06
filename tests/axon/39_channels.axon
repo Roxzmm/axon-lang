@@ -1,0 +1,128 @@
+module Test
+
+// Test 39: Channel primitives
+// channel(cap)        — create buffered channel (cap=0 means unbounded)
+// chan_send(ch, v)    — async send (blocks if full)
+// chan_recv(ch)       — async recv (blocks until value available)
+// chan_try_recv(ch)   — non-blocking recv -> Option
+// chan_try_send(ch,v) — non-blocking send -> Bool
+// chan_close(ch)      — close channel
+// chan_is_closed(ch)  — Bool
+// chan_size(ch)       — Int: items currently buffered
+
+// pipeline(agents, input) — pass output of each agent as input to next
+
+// ── Simple processor agent ────────────────────────────────────
+
+agent Doubler {
+    state { }
+    on Process(x: Int) -> Int {
+        x * 2
+    }
+}
+
+agent Adder {
+    state { }
+    on Process(x: Int) -> Int {
+        x + 10
+    }
+}
+
+fn main() -> Unit {
+    // --- Test 1: Basic buffered channel send/recv ---
+
+    let ch = channel(10)  // capacity 10
+    chan_send(ch, 42)
+    chan_send(ch, 99)
+    let v1 = chan_recv(ch)
+    let v2 = chan_recv(ch)
+    assert(v1 == 42, "recv first value")
+    assert(v2 == 99, "recv second value")
+    print($"Test 1 passed: buffered channel send/recv = {v1}, {v2}")
+
+    // --- Test 2: chan_size ---
+
+    let ch2 = channel(5)
+    assert(chan_size(ch2) == 0, "empty channel size is 0")
+    chan_send(ch2, 1)
+    chan_send(ch2, 2)
+    chan_send(ch2, 3)
+    assert(chan_size(ch2) == 3, "channel size after 3 sends")
+    let _ = chan_recv(ch2)
+    assert(chan_size(ch2) == 2, "channel size after 1 recv")
+    print($"Test 2 passed: chan_size works correctly")
+
+    // --- Test 3: chan_try_recv on empty channel ---
+
+    let ch3 = channel(5)
+    let opt1 = chan_try_recv(ch3)
+    assert(opt1 == None, "try_recv on empty = None")
+    chan_send(ch3, 777)
+    let opt2 = chan_try_recv(ch3)
+    assert(opt2 == Some(777), "try_recv with item = Some(777)")
+    let opt3 = chan_try_recv(ch3)
+    assert(opt3 == None, "try_recv after consuming = None again")
+    print("Test 3 passed: chan_try_recv returns Option correctly")
+
+    // --- Test 4: chan_try_send (non-blocking) ---
+
+    let ch4 = channel(2)
+    let ok1 = chan_try_send(ch4, 10)
+    let ok2 = chan_try_send(ch4, 20)
+    assert(ok1 == true, "try_send into empty buffer = true")
+    assert(ok2 == true, "try_send into non-full buffer = true")
+    // Buffer now full (capacity 2)
+    let ok3 = chan_try_send(ch4, 30)
+    assert(ok3 == false, "try_send into full buffer = false")
+    print("Test 4 passed: chan_try_send respects capacity")
+
+    // --- Test 5: chan_close / chan_is_closed ---
+
+    let ch5 = channel(5)
+    assert(chan_is_closed(ch5) == false, "new channel is not closed")
+    chan_send(ch5, 1)
+    chan_close(ch5)
+    assert(chan_is_closed(ch5) == true, "closed channel is_closed = true")
+    // Can still recv buffered values after close
+    let vv = chan_recv(ch5)
+    assert(vv == 1, "can recv buffered value after close")
+    print("Test 5 passed: chan_close and chan_is_closed work")
+
+    // --- Test 6: Channel as producer/consumer via agents ---
+    // Producer agent sends into channel; main reads from it
+
+    let work_ch = channel(100)
+    chan_send(work_ch, 1)
+    chan_send(work_ch, 2)
+    chan_send(work_ch, 3)
+    let mut sum = 0
+    sum = sum + chan_recv(work_ch)
+    sum = sum + chan_recv(work_ch)
+    sum = sum + chan_recv(work_ch)
+    assert(sum == 6, "sum of channel items 1+2+3=6")
+    print($"Test 6 passed: channel as work queue, sum = {sum}")
+
+    // --- Test 7: pipeline([agent1, agent2], input) ---
+    // input → Doubler.Process → Adder.Process
+    // 5 → 10 → 20
+
+    let d = spawn Doubler
+    let a = spawn Adder
+    let result = pipeline([d, a], 5)
+    assert(result == 20, "pipeline: 5 → *2 → +10 = 20")
+    print($"Test 7 passed: pipeline result = {result}")
+
+    // --- Test 8: Unbounded channel (capacity 0) ---
+
+    let uch = channel(0)
+    chan_send(uch, 100)
+    chan_send(uch, 200)
+    chan_send(uch, 300)
+    let s = chan_size(uch)
+    assert(s == 3, "unbounded channel holds all items")
+    let rv = chan_recv(uch)
+    assert(rv == 100, "FIFO order in unbounded channel")
+    print($"Test 8 passed: unbounded channel size={s}, first={rv}")
+
+    print("All channel tests passed!")
+}

@@ -9,6 +9,38 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.4] - 2026-03-06
+
+### Channels + Pipeline orchestration
+
+**Channel primitives** for agent-to-agent and producer/consumer communication:
+
+```axon
+let ch = channel(100)     // buffered channel (capacity 100; 0 = unbounded)
+
+chan_send(ch, value)       // async send (returns Unit)
+let v = chan_recv(ch)      // async recv (blocks until value available)
+let opt = chan_try_recv(ch)  // non-blocking -> Option<T>
+let ok  = chan_try_send(ch, value)  // non-blocking -> Bool (false if full/closed)
+
+chan_close(ch)             // close the channel
+chan_is_closed(ch) -> Bool
+chan_size(ch)      -> Int  // items currently buffered
+```
+
+**`pipeline(agents, input)`** — sequential agent orchestration:
+
+```axon
+// Pass output of each agent's Process handler as input to the next
+let result = pipeline([doubler, adder, logger], initial_value)
+// equivalent to: logger.ask(Process(adder.ask(Process(doubler.ask(Process(initial_value))))))
+```
+
+Test 39 covers: buffered channels, FIFO ordering, size tracking, try_send capacity limit,
+close/is_closed, channel-as-work-queue, pipeline chaining, unbounded channels.
+
+---
+
 ## [0.4.3] - 2026-03-06
 
 ### Agent — Capability System (`requires` / `spawn with [Cap]`)

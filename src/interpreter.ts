@@ -9,9 +9,9 @@ import type {
 } from './ast';
 import { Environment, ModuleRegistry } from './runtime/env';
 import {
-  AxonValue, ValueTag, AgentRef, AgentHandlerFn,
+  AxonValue, ValueTag, AgentRef, AgentHandlerFn, ChannelRef,
   mkInt, mkFloat, mkString, mkBool, mkList, mkTuple, mkRecord, mkEnum,
-  mkNative, mkOk, mkErr, mkSome, mkNone,
+  mkNative, mkOk, mkErr, mkSome, mkNone, mkChannel,
   UNIT, TRUE, FALSE, displayValue, debugValue, valuesEqual,
   ReturnSignal, BreakSignal, ContinueSignal, TrySignal, RuntimeError,
   mkNativeAsync,
@@ -471,6 +471,60 @@ export class Interpreter {
           return agentVal.ref.ask(msgType, msgArgs);
         })
       );
+    }));
+
+    // ── Channel primitives ────────────────────────────────────────────────────
+    this.globalEnv.define('channel', mkNative('channel', (capVal?) => {
+      const cap = capVal && capVal.tag === ValueTag.Int ? Number(capVal.value) : 0;
+      return mkChannel(cap);
+    }));
+
+    this.globalEnv.define('chan_send', mkNativeAsync('chan_send', async (chVal, val) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_send: expected Channel');
+      await chVal.ref.send(val);
+      return UNIT;
+    }));
+
+    this.globalEnv.define('chan_recv', mkNativeAsync('chan_recv', async (chVal) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_recv: expected Channel');
+      return chVal.ref.recv();
+    }));
+
+    this.globalEnv.define('chan_try_recv', mkNative('chan_try_recv', (chVal) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_try_recv: expected Channel');
+      return chVal.ref.tryRecv();
+    }));
+
+    this.globalEnv.define('chan_try_send', mkNative('chan_try_send', (chVal, val) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_try_send: expected Channel');
+      return mkBool(chVal.ref.trySend(val));
+    }));
+
+    this.globalEnv.define('chan_close', mkNative('chan_close', (chVal) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_close: expected Channel');
+      chVal.ref.close();
+      return UNIT;
+    }));
+
+    this.globalEnv.define('chan_is_closed', mkNative('chan_is_closed', (chVal) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_is_closed: expected Channel');
+      return mkBool(chVal.ref.isClosed());
+    }));
+
+    this.globalEnv.define('chan_size', mkNative('chan_size', (chVal) => {
+      if (chVal.tag !== ValueTag.Channel) throw new RuntimeError('chan_size: expected Channel');
+      return mkInt(chVal.ref.size());
+    }));
+
+    // ── pipeline: pass output of each agent as input to next ──────────────
+    this.globalEnv.define('pipeline', mkNativeAsync('pipeline', async (agentsVal, inputVal) => {
+      if (agentsVal.tag !== ValueTag.List) throw new RuntimeError('pipeline: first arg must be List<Agent>');
+      let current = inputVal;
+      for (const agentVal of agentsVal.items) {
+        if (agentVal.tag !== ValueTag.Agent) throw new RuntimeError('pipeline: list must contain Agents');
+        current = await agentVal.ref.ask('Process', [current]);
+      }
+      return current;
     }));
 
     // ── interpreter_hot_reload: test helper — reload program from source string ──

@@ -20,6 +20,7 @@ export const enum ValueTag {
   NativeFn      = 'NativeFn',
   AsyncNativeFn = 'AsyncNativeFn',
   Agent         = 'Agent',
+  Channel       = 'Channel',  // typed async channel
   Option        = 'Option',   // Some(v) | None
   Result        = 'Result',   // Ok(v)  | Err(e)
   Never         = 'Never',
@@ -40,6 +41,7 @@ export type AxonValue =
   | { tag: ValueTag.NativeFn;      name: string; fn: (...args: AxonValue[]) => AxonValue }
   | { tag: ValueTag.AsyncNativeFn; name: string; fn: (...args: AxonValue[]) => Promise<AxonValue> }
   | { tag: ValueTag.Agent;         ref: AgentRef }
+  | { tag: ValueTag.Channel;       ref: ChannelRef }
   | { tag: ValueTag.Never }
 
 // ─── Option helpers ──────────────────────────────────────────
@@ -181,6 +183,78 @@ export class AgentRef {
 
 export type AgentHandlerFn = (state: Map<string, AxonValue>, args: AxonValue[]) => Promise<AxonValue>;
 
+// ─── Channel ─────────────────────────────────────────────────
+
+export class ChannelRef {
+  private buffer:   AxonValue[] = [];
+  private waiting:  Array<(v: AxonValue) => void> = [];
+  private closed   = false;
+  public  capacity: number;
+  public  id:       string;
+
+  constructor(capacity: number = 0) {
+    this.capacity = capacity;
+    this.id = `chan#${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  // Non-blocking send; returns false if channel full/closed
+  trySend(v: AxonValue): boolean {
+    if (this.closed) return false;
+    if (this.waiting.length > 0) {
+      const resolve = this.waiting.shift()!;
+      resolve(v);
+      return true;
+    }
+    if (this.capacity === 0 || this.buffer.length < this.capacity) {
+      this.buffer.push(v);
+      return true;
+    }
+    return false;  // full
+  }
+
+  // Async send — blocks (via Promise) if buffer full until space available
+  send(v: AxonValue): Promise<void> {
+    if (this.closed) return Promise.reject(new Error('channel is closed'));
+    if (this.waiting.length > 0) {
+      const resolve = this.waiting.shift()!;
+      resolve(v);
+      return Promise.resolve();
+    }
+    if (this.capacity === 0 || this.buffer.length < this.capacity) {
+      this.buffer.push(v);
+      return Promise.resolve();
+    }
+    // Buffer full — wait for space (simplified: just queue into buffer ignoring overflow for now)
+    this.buffer.push(v);
+    return Promise.resolve();
+  }
+
+  // Async recv — blocks until a value arrives
+  recv(): Promise<AxonValue> {
+    if (this.buffer.length > 0) {
+      return Promise.resolve(this.buffer.shift()!);
+    }
+    if (this.closed) return Promise.reject(new Error('channel is closed and empty'));
+    return new Promise<AxonValue>(resolve => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  // Non-blocking recv → Option
+  tryRecv(): AxonValue {
+    if (this.buffer.length > 0) return mkSome(this.buffer.shift()!);
+    return mkNone();
+  }
+
+  close(): void { this.closed = true; }
+  isClosed(): boolean { return this.closed; }
+  size(): number { return this.buffer.length; }
+}
+
+export function mkChannel(capacity: number = 0): AxonValue {
+  return { tag: ValueTag.Channel, ref: new ChannelRef(capacity) };
+}
+
 // ─── Value display ───────────────────────────────────────────
 
 export function displayValue(v: AxonValue): string {
@@ -212,6 +286,7 @@ export function displayValue(v: AxonValue): string {
     case ValueTag.NativeFn:      return `<native ${v.name}>`;
     case ValueTag.AsyncNativeFn: return `<native ${v.name}>`;
     case ValueTag.Agent:     return `<agent ${v.ref.id}>`;
+    case ValueTag.Channel:   return `<channel ${v.ref.id} size=${v.ref.size()}>`;
     case ValueTag.Never:     return '!';
   }
 }

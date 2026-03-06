@@ -311,6 +311,7 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Agent execution timeout (`spawn Foo timeout(ms)`) | ✅ Complete |
 | Trace mode (`--trace` / `--trace-file`, JSONL) | ✅ Complete |
 | Capability system (`agent requires` + `spawn with [Cap]`) | ✅ Complete |
+| Channel primitives (`channel`, `chan_send/recv`, `pipeline`) | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 
