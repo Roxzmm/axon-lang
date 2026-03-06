@@ -1,0 +1,83 @@
+module Test
+
+// Test 42: Regex operations
+// regex_test(s, pattern)          -> Bool
+// regex_match(s, pattern)         -> Option<List<String>>  (groups[0]=full, groups[1..]=captures)
+// regex_match_all(s, pattern)     -> List<List<String>>
+// regex_replace(s, pattern, with) -> String  (replaces all occurrences)
+// regex_split(s, pattern)         -> List<String>
+
+fn main() -> Unit {
+    // --- Test 1: regex_test ---
+
+    assert(regex_test("hello world", "\\bworld\\b"), "regex_test: word boundary")
+    assert(regex_test("2026-03-07", "^\\d{4}-\\d{2}-\\d{2}$"), "regex_test: date format")
+    assert(!regex_test("abc", "^\\d+$"), "regex_test: digits only fails on abc")
+    assert(regex_test("test@example.com", "@"), "regex_test: contains @")
+    print("Test 1 passed: regex_test works")
+
+    // --- Test 2: regex_match — basic ---
+
+    let m1 = regex_match("2026-03-07", "(\\d{4})-(\\d{2})-(\\d{2})")
+    assert(m1 != None, "regex_match: date matched")
+    let groups = match m1 { Some(g) => g, None => [] }
+    assert_eq(groups[0], "2026-03-07", "full match")
+    assert_eq(groups[1], "2026", "year capture")
+    assert_eq(groups[2], "03", "month capture")
+    assert_eq(groups[3], "07", "day capture")
+    print($"Test 2 passed: regex_match groups = {groups}")
+
+    // --- Test 3: regex_match — no match returns None ---
+
+    let m2 = regex_match("hello", "^\\d+$")
+    assert(m2 == None, "non-matching regex returns None")
+    print("Test 3 passed: no match returns None")
+
+    // --- Test 4: regex_match_all ---
+
+    let matches = regex_match_all("foo123bar456baz", "\\d+")
+    assert_eq(list_len(matches), 2, "match_all finds 2 number groups")
+    let first_match = matches[0]
+    let second_match = matches[1]
+    assert_eq(first_match[0], "123", "first number match")
+    assert_eq(second_match[0], "456", "second number match")
+    print($"Test 4 passed: regex_match_all = {matches}")
+
+    // --- Test 5: regex_replace ---
+
+    let r1 = regex_replace("foo123bar456", "\\d+", "NUM")
+    assert_eq(r1, "fooNUMbarNUM", "replace all digits")
+
+    let r2 = regex_replace("hello   world", "\\s+", " ")
+    assert_eq(r2, "hello world", "collapse whitespace")
+
+    let r3 = regex_replace("2026-03-07", "-(\\d{2})$", "/07")
+    assert_eq(r3, "2026-03/07", "replace with literal")
+    print($"Test 5 passed: regex_replace r1={r1}, r2={r2}")
+
+    // --- Test 6: regex_split ---
+
+    let parts1 = regex_split("one,two,,three", ",+")
+    assert_eq(list_len(parts1), 3, "split on commas")
+    assert_eq(parts1[0], "one", "split part 0")
+    assert_eq(parts1[1], "two", "split part 1")
+    assert_eq(parts1[2], "three", "split part 2")
+
+    let parts2 = regex_split("2026-03-07", "[-/]")
+    assert_eq(list_len(parts2), 3, "split date parts")
+    assert_eq(parts2[0], "2026", "year")
+    print($"Test 6 passed: regex_split parts1={parts1}")
+
+    // --- Test 7: AI agent pattern — extract JSON value from LLM response ---
+
+    let llm_response = "The answer is: {\"value\": 42, \"confidence\": 0.95}"
+    let val_match = regex_match(llm_response, "\"value\":\\s*(\\d+)")
+    let value = match val_match {
+        Some(g) => match parse_int(g[1]) { Ok(n) => n, Err(_) => 0 },
+        None    => 0,
+    }
+    assert_eq(value, 42, "extracted value from LLM response")
+    print($"Test 7 passed: AI pattern — extracted value = {value}")
+
+    print("All regex tests passed!")
+}

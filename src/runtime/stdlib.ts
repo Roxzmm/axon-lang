@@ -211,6 +211,37 @@ const stringFns: Record<string, NativeFn> = {
     while ((pos = s.indexOf(ss, pos)) >= 0) { count++; pos += ss.length; }
     return mkInt(count);
   },
+  // Regex operations
+  regex_match: (v, pattern) => {
+    const s = asStr(v, 'regex_match'), p = asStr(pattern, 'regex_match');
+    try {
+      const m = s.match(new RegExp(p));
+      if (!m) return mkNone();
+      return mkSome(mkList(m.slice(0).map(g => g != null ? mkString(g) : mkString(''))));
+    } catch (e) { throw new RuntimeError(`regex_match: invalid pattern: ${p}`); }
+  },
+  regex_match_all: (v, pattern) => {
+    const s = asStr(v, 'regex_match_all'), p = asStr(pattern, 'regex_match_all');
+    try {
+      const matches = [...s.matchAll(new RegExp(p, 'g'))];
+      return mkList(matches.map(m => mkList(m.slice(0).map(g => g != null ? mkString(g) : mkString('')))));
+    } catch (e) { throw new RuntimeError(`regex_match_all: invalid pattern: ${p}`); }
+  },
+  regex_test: (v, pattern) => {
+    const s = asStr(v, 'regex_test'), p = asStr(pattern, 'regex_test');
+    try { return mkBool(new RegExp(p).test(s)); }
+    catch (e) { throw new RuntimeError(`regex_test: invalid pattern: ${p}`); }
+  },
+  regex_replace: (v, pattern, replacement) => {
+    const s = asStr(v, 'regex_replace'), p = asStr(pattern, 'regex_replace'), r = asStr(replacement, 'regex_replace');
+    try { return mkString(s.replace(new RegExp(p, 'g'), r)); }
+    catch (e) { throw new RuntimeError(`regex_replace: invalid pattern: ${p}`); }
+  },
+  regex_split: (v, pattern) => {
+    const s = asStr(v, 'regex_split'), p = asStr(pattern, 'regex_split');
+    try { return mkList(s.split(new RegExp(p)).map(mkString)); }
+    catch (e) { throw new RuntimeError(`regex_split: invalid pattern: ${p}`); }
+  },
 };
 
 // ─── List operations ─────────────────────────────────────────

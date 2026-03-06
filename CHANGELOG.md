@@ -9,6 +9,31 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.9] - 2026-03-07
+
+### Regex stdlib
+
+Five regex functions for parsing LLM outputs and text processing:
+
+```axon
+regex_test(s, pattern)           -> Bool
+regex_match(s, pattern)          -> Option<List<String>>   // groups[0]=full, [1..]=captures
+regex_match_all(s, pattern)      -> List<List<String>>     // all occurrences
+regex_replace(s, pattern, with)  -> String                 // replaces all matches
+regex_split(s, pattern)          -> List<String>           // split by pattern
+```
+
+Example — extract JSON field from LLM response:
+```axon
+let m = regex_match(response, "\"value\":\\s*(\\d+)")
+let value = match m {
+    Some(g) => parse_int(g[1]).unwrap_or(0),
+    None    => 0,
+}
+```
+
+---
+
 ## [0.4.8] - 2026-03-06
 
 ### `axon test` — Built-in Test Runner
