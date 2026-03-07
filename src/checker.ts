@@ -243,6 +243,15 @@ export class TypeChecker {
     this.typeEnv.define('read_file',           fnFile(1));
     this.typeEnv.define('write_file',          fnFile(2));
     this.typeEnv.define('file_exists',         fnFile(1));
+    // New filesystem functions (V3 Phase 1)
+    this.typeEnv.define('fs_read_dir',         fnFile(1));
+    this.typeEnv.define('fs_mkdir',            fnFile(1));
+    this.typeEnv.define('fs_remove',           fnFile(1));
+    this.typeEnv.define('fs_copy',             fnFile(2));
+    this.typeEnv.define('fs_move',             fnFile(2));
+    this.typeEnv.define('fs_stat',             fnFile(1));
+    this.typeEnv.define('fs_is_file',          fnFile(1));
+    this.typeEnv.define('fs_is_dir',           fnFile(1));
     this.typeEnv.define('http_get',            fnNet(1));
     this.typeEnv.define('http_post',           fnNet(3));
     this.typeEnv.define('http_get_json',       fnNet(1));

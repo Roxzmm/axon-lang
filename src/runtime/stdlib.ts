@@ -522,6 +522,79 @@ const ioFileFns: Record<string, NativeFn> = {
     const fs = require('fs') as typeof import('fs');
     return mkBool(fs.existsSync(p));
   },
+  // New filesystem functions (V3 Phase 1)
+  fs_read_dir: (path) => {
+    const p = asStr(path, 'fs_read_dir');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      const entries = fs.readdirSync(p);
+      return mkOk(mkList(entries.map(mkString)));
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_mkdir: (path) => {
+    const p = asStr(path, 'fs_mkdir');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      fs.mkdirSync(p, { recursive: true });
+      return mkOk(UNIT);
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_remove: (path) => {
+    const p = asStr(path, 'fs_remove');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      const stat = fs.statSync(p);
+      if (stat.isDirectory()) {
+        fs.rmdirSync(p, { recursive: true });
+      } else {
+        fs.unlinkSync(p);
+      }
+      return mkOk(UNIT);
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_copy: (src, dest) => {
+    const s = asStr(src, 'fs_copy'); const d = asStr(dest, 'fs_copy');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      fs.copyFileSync(s, d);
+      return mkOk(UNIT);
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_move: (src, dest) => {
+    const s = asStr(src, 'fs_move'); const d = asStr(dest, 'fs_move');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      fs.renameSync(s, d);
+      return mkOk(UNIT);
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_stat: (path) => {
+    const p = asStr(path, 'fs_stat');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      const stat = fs.statSync(p);
+      const fields = new Map<string, AxonValue>();
+      fields.set('size', mkInt(stat.size));
+      fields.set('is_file', mkBool(stat.isFile()));
+      fields.set('is_dir', mkBool(stat.isDirectory()));
+      fields.set('modified', mkInt(Math.floor(stat.mtimeMs)));
+      return mkOk({ tag: ValueTag.Record, typeName: 'FileStat', fields } as AxonValue);
+    } catch (e) { return mkErr(mkString(String(e))); }
+  },
+  fs_is_file: (path) => {
+    const p = asStr(path, 'fs_is_file');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      return mkBool(fs.statSync(p).isFile());
+    } catch (e) { return mkBool(false); }
+  },
+  fs_is_dir: (path) => {
+    const p = asStr(path, 'fs_is_dir');
+    try {
+      const fs = require('fs') as typeof import('fs');
+      return mkBool(fs.statSync(p).isDirectory());
+    } catch (e) { return mkBool(false); }
+  },
 };
 
 // ─── JSON helpers ─────────────────────────────────────────────

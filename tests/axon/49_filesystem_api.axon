@@ -1,0 +1,75 @@
+module Test
+
+// Test 49: Filesystem API - Complete file operations
+// Tests new filesystem functions added in V3 Phase 1
+
+fn main() -> Unit {
+    print("=== Testing Filesystem API ===")
+
+    // Test 1: fs_mkdir - Create directory
+    let mkdir_result = fs_mkdir("tests/temp_test_dir")
+    assert(mkdir_result != Err(""), "fs_mkdir should succeed")
+    print("✅ Test 1: fs_mkdir works")
+
+    // Test 2: fs_is_dir - Check if directory exists
+    let is_dir = fs_is_dir("tests/temp_test_dir")
+    assert_eq(is_dir, true, "fs_is_dir should return true")
+    print("✅ Test 2: fs_is_dir works")
+
+    // Test 3: write_file - Write test file
+    let write_result = write_file("tests/temp_test_dir/test.txt", "Hello, Axon!")
+    assert(write_result != Err(""), "write_file should succeed")
+    print("✅ Test 3: write_file works")
+
+    // Test 4: fs_is_file - Check if file exists
+    let is_file = fs_is_file("tests/temp_test_dir/test.txt")
+    assert_eq(is_file, true, "fs_is_file should return true")
+    print("✅ Test 4: fs_is_file works")
+
+    // Test 5: fs_stat - Get file stats
+    let stat_result = fs_stat("tests/temp_test_dir/test.txt")
+    match stat_result {
+        Ok(stat) => {
+            print($"✅ Test 5: fs_stat works - file size exists")
+        }
+        Err(e) => {
+            print($"❌ Test 5 failed: {e}")
+        }
+    }
+
+    // Test 6: fs_read_dir - List directory contents
+    let read_dir_result = fs_read_dir("tests/temp_test_dir")
+    match read_dir_result {
+        Ok(entries) => {
+            assert(list_len(entries) > 0, "directory should have entries")
+            print($"✅ Test 6: fs_read_dir works - found {list_len(entries)} entries")
+        }
+        Err(e) => {
+            print($"❌ Test 6 failed: {e}")
+        }
+    }
+
+    // Test 7: fs_copy - Copy file
+    let copy_result = fs_copy("tests/temp_test_dir/test.txt", "tests/temp_test_dir/test_copy.txt")
+    assert(copy_result != Err(""), "fs_copy should succeed")
+    let copy_exists = fs_is_file("tests/temp_test_dir/test_copy.txt")
+    assert_eq(copy_exists, true, "copied file should exist")
+    print("✅ Test 7: fs_copy works")
+
+    // Test 8: fs_move - Move/rename file
+    let move_result = fs_move("tests/temp_test_dir/test_copy.txt", "tests/temp_test_dir/test_moved.txt")
+    assert(move_result != Err(""), "fs_move should succeed")
+    let moved_exists = fs_is_file("tests/temp_test_dir/test_moved.txt")
+    assert_eq(moved_exists, true, "moved file should exist")
+    let old_exists = fs_is_file("tests/temp_test_dir/test_copy.txt")
+    assert_eq(old_exists, false, "old file should not exist")
+    print("✅ Test 8: fs_move works")
+
+    // Cleanup: Remove test directory
+    let _ = fs_remove("tests/temp_test_dir/test.txt")
+    let _ = fs_remove("tests/temp_test_dir/test_moved.txt")
+    let _ = fs_remove("tests/temp_test_dir")
+
+    print("")
+    print("=== All Filesystem API tests passed! ===")
+}
