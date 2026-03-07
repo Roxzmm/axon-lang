@@ -1,0 +1,82 @@
+module Test
+
+// Test 46: Parameter destructuring in functions
+// Allows tuple and list pattern matching directly in function parameters
+
+// --- Test 1: Tuple destructuring ---
+
+fn add_points((x1, y1): (Int, Int), (x2, y2): (Int, Int)) -> (Int, Int) {
+    (x1 + x2, y1 + y2)
+}
+
+fn distance((x1, y1): (Int, Int), (x2, y2): (Int, Int)) -> Float {
+    let dx = x2 - x1
+    let dy = y2 - y1
+    sqrt(float(dx * dx + dy * dy))
+}
+
+fn swap((a, b): (Int, Int)) -> (Int, Int) {
+    (b, a)
+}
+
+// --- Test 2: List destructuring ---
+
+fn first_two([a, b, ..]: List<Int>) -> (Int, Int) {
+    (a, b)
+}
+
+fn sum_first_two([x, y, ..]: List<Int>) -> Int {
+    x + y
+}
+
+fn head_or_default([h, ..]: List<Int>) -> Int {
+    h
+}
+
+// --- Test 3: Nested destructuring ---
+
+fn extract_nested(((a, b), c): ((Int, Int), Int)) -> Int {
+    a + b + c
+}
+
+fn complex_nest((x, [y, z, ..]): (Int, List<Int>)) -> Int {
+    x + y + z
+}
+
+fn main() -> Unit {
+    // Test 1: Tuple destructuring
+    let p1 = add_points((1, 2), (3, 4))
+    assert_eq(p1, (4, 6), "add_points")
+
+    let d = distance((0, 0), (3, 4))
+    assert_eq(d, 5.0, "distance")
+
+    let swapped = swap((10, 20))
+    assert_eq(swapped, (20, 10), "swap")
+
+    print("Test 1 passed: Tuple destructuring")
+
+    // Test 2: List destructuring
+    let (a, b) = first_two([10, 20, 30, 40])
+    assert_eq(a, 10, "first element")
+    assert_eq(b, 20, "second element")
+
+    let s = sum_first_two([5, 7, 9])
+    assert_eq(s, 12, "sum first two")
+
+    let h = head_or_default([99, 88, 77])
+    assert_eq(h, 99, "head")
+
+    print("Test 2 passed: List destructuring")
+
+    // Test 3: Nested destructuring
+    let n = extract_nested(((1, 2), 3))
+    assert_eq(n, 6, "nested tuple destructuring")
+
+    let cn = complex_nest((10, [20, 30, 40]))
+    assert_eq(cn, 60, "complex nested destructuring")
+
+    print("Test 3 passed: Nested destructuring")
+
+    print("All parameter destructuring tests passed!")
+}

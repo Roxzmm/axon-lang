@@ -368,7 +368,14 @@ export class TypeChecker {
 
     const fnEnv = this.typeEnv.child();
     for (const p of decl.params) {
-      fnEnv.define(p.name, p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
+      const paramTy = p.ty ? this.resolveType(p.ty) : T_UNKNOWN;
+      if (p.pat) {
+        // Destructuring parameter: bind pattern variables
+        this.checkPatternBinding(p.pat, paramTy, fnEnv);
+      } else {
+        // Simple parameter: bind name
+        fnEnv.define(p.name, paramTy);
+      }
     }
 
     // Effect enforcement: for explicit-annotated fns, or ALL fns in strict mode
@@ -409,7 +416,12 @@ export class TypeChecker {
     for (const handler of decl.handlers) {
       const handlerEnv = agentEnv.child();
       for (const p of handler.params) {
-        handlerEnv.define(p.name, p.ty ? this.resolveType(p.ty) : T_UNKNOWN);
+        const paramTy = p.ty ? this.resolveType(p.ty) : T_UNKNOWN;
+        if (p.pat) {
+          this.checkPatternBinding(p.pat, paramTy, handlerEnv);
+        } else {
+          handlerEnv.define(p.name, paramTy);
+        }
       }
 
       const savedEffects = this.currentEffects;
@@ -583,7 +595,11 @@ export class TypeChecker {
         const lambdaEnv = env.child();
         const paramTys  = expr.params.map(p => {
           const ty = p.ty ? this.resolveType(p.ty) : T_UNKNOWN;
-          lambdaEnv.define(p.name, ty);
+          if (p.pat) {
+            this.checkPatternBinding(p.pat, ty, lambdaEnv);
+          } else {
+            lambdaEnv.define(p.name, ty);
+          }
           return ty;
         });
         const retTy = this.checkExpr(expr.body, lambdaEnv);

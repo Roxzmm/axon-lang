@@ -100,7 +100,8 @@ export type Stmt =
 // ─── Declarations ────────────────────────────────────────────
 
 export interface Param {
-  name:     string;
+  name:     string;           // Simple identifier (for backward compat)
+  pat:      Pattern | null;   // Pattern for destructuring (if present, overrides name)
   ty:       TypeExpr | null;
   default_: Expr | null;
   span:     Span;

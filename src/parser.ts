@@ -180,7 +180,21 @@ export class Parser {
 
   private parseParam(): Param {
     const span = this.span();
-    const name = this.expectIdent();
+
+    // Check if this is a pattern parameter (starts with '(' or '[')
+    let name: string;
+    let pat: Pattern | null = null;
+
+    if (this.check(TokenKind.LParen) || this.check(TokenKind.LBracket)) {
+      // Parse pattern for destructuring
+      pat = this.parsePattern();
+      // Extract a dummy name for the parameter (will use pattern for binding)
+      name = '_pat';
+    } else {
+      // Simple identifier parameter
+      name = this.expectIdent();
+    }
+
     let ty: TypeExpr | null = null;
     if (this.check(TokenKind.Colon)) {
       this.advance();
@@ -191,7 +205,7 @@ export class Parser {
       this.advance();
       default_ = this.parseExpr();
     }
-    return { name, ty, default_, span };
+    return { name, pat, ty, default_, span };
   }
 
   // ── Type Declaration ─────────────────────────────────────

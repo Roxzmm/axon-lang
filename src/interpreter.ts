@@ -1967,11 +1967,32 @@ export class Interpreter {
         const param = fn.params[i];
         const arg   = args[i];
         if (arg !== undefined) {
-          callEnv.define(param.name, arg);
+          if (param.pat) {
+            // Destructuring parameter: match pattern and bind variables
+            const bindings = new Map<string, AxonValue>();
+            if (!this.matchPattern(param.pat, arg, bindings)) {
+              throw new RuntimeError(`Parameter pattern match failed for argument ${i + 1}`);
+            }
+            for (const [k, v] of bindings) callEnv.define(k, v);
+          } else {
+            // Simple parameter: bind name
+            callEnv.define(param.name, arg);
+          }
         } else if (param.default_) {
-          callEnv.define(param.name, await this.evalExpr(param.default_, callEnv));
+          const defaultVal = await this.evalExpr(param.default_, callEnv);
+          if (param.pat) {
+            const bindings = new Map<string, AxonValue>();
+            if (!this.matchPattern(param.pat, defaultVal, bindings)) {
+              throw new RuntimeError(`Parameter pattern match failed for default value of argument ${i + 1}`);
+            }
+            for (const [k, v] of bindings) callEnv.define(k, v);
+          } else {
+            callEnv.define(param.name, defaultVal);
+          }
         } else {
-          callEnv.define(param.name, UNIT);
+          if (!param.pat) {
+            callEnv.define(param.name, UNIT);
+          }
         }
       }
 
