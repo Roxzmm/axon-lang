@@ -1,0 +1,21 @@
+module Test
+type Point { x: Int, y: Int }
+
+fn main() -> Unit {
+    // for with list (using mut)
+    let mut sum = 0
+    for i in [1, 2, 3, 4, 5] {
+        sum = sum + i
+    }
+    assert_eq(sum, 15, "for list sum")
+
+    // range via list_range
+    let r = list_range(1, 6)
+    let mut s2 = 0
+    for i in r {
+        s2 = s2 + i
+    }
+    assert_eq(s2, 15, "for range sum")
+
+    print("PASS")
+}
