@@ -11,6 +11,7 @@ import { typeCheck, Diagnostic } from './checker';
 import { Interpreter, ReplResult } from './interpreter';
 import { HotReloadManager, createDefaultLogger } from './hot_reload';
 import { RuntimeError, ValueTag, displayValue } from './runtime/value';
+import { formatProgram } from './formatter';
 
 // ─── Colors ──────────────────────────────────────────────────
 
@@ -183,6 +184,27 @@ async function checkFile(filePath: string): Promise<void> {
       console.log(c('yellow', `${diagnostics.length} warning(s) found`));
     }
   }
+}
+
+// ─── Format command ──────────────────────────────────────────
+
+async function formatFile(filePath: string): Promise<void> {
+  const abs    = path.resolve(filePath);
+  const source = fs.readFileSync(abs, 'utf-8');
+
+  console.log(c('cyan', `Formatting ${path.basename(abs)}...`));
+
+  let program;
+  try {
+    program = parse(source, abs);
+  } catch (e) {
+    console.error(c('red', 'Parse error: ') + (e instanceof Error ? e.message : String(e)));
+    process.exit(1);
+  }
+
+  const formatted = formatProgram(program);
+  fs.writeFileSync(abs, formatted, 'utf-8');
+  console.log(c('green', '✓ File formatted'));
 }
 
 // ─── REPL helpers ────────────────────────────────────────────
@@ -673,6 +695,13 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'fmt': {
+      const file = args[1];
+      if (!file) { console.error('Usage: axon fmt <file.axon>'); process.exit(1); }
+      await formatFile(file);
+      break;
+    }
+
     case 'repl': {
       await startRepl();
       break;
@@ -689,6 +718,7 @@ ${c('cyan', 'Commands:')}
   test [dir]                   Run all *.axon test files in a directory (default: tests/axon/)
   replay <trace.jsonl> <file>  Replay a program using recorded trace (mock side effects)
   check <file>                 Type-check without running
+  fmt <file>                   Format an Axon source file
   repl                         Start interactive REPL
 
 ${c('cyan', 'Options for run:')}
@@ -702,6 +732,7 @@ ${c('cyan', 'Examples:')}
   axon run demo/counter.axon
   axon run demo/hot_reload_demo.axon --watch
   axon check demo/type_errors.axon
+  axon fmt demo/counter.axon
   axon repl
 `);
       break;
