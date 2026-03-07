@@ -1,0 +1,79 @@
+module Test
+
+// Test 47: Pattern matching in for loops
+// Allows destructuring and pattern matching directly in for loop iteration
+
+type Point { x: Int, y: Int }
+
+fn main() -> Unit {
+    // --- Test 1: Tuple destructuring in for loop ---
+
+    let pairs = [(1, 2), (3, 4), (5, 6)]
+    let mut sum_x = 0
+    let mut sum_y = 0
+
+    for (x, y) in pairs {
+        sum_x = sum_x + x
+        sum_y = sum_y + y
+    }
+
+    assert_eq(sum_x, 9, "sum of x coordinates")
+    assert_eq(sum_y, 12, "sum of y coordinates")
+
+    print("Test 1 passed: Tuple destructuring in for loop")
+
+    // --- Test 2: List destructuring in for loop ---
+
+    let lists = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    let mut first_sum = 0
+
+    for [first, ..] in lists {
+        first_sum = first_sum + first
+    }
+
+    assert_eq(first_sum, 12, "sum of first elements")
+
+    print("Test 2 passed: List destructuring in for loop")
+
+    // --- Test 3: Nested destructuring in for loop ---
+
+    let nested = [((1, 2), 3), ((4, 5), 6), ((7, 8), 9)]
+    let mut total = 0
+
+    for ((a, b), c) in nested {
+        total = total + a + b + c
+    }
+
+    assert_eq(total, 45, "sum of all nested values")
+
+    print("Test 3 passed: Nested destructuring in for loop")
+
+    // --- Test 4: Complex pattern with list and tuple ---
+
+    let complex = [(1, [10, 20]), (2, [30, 40]), (3, [50, 60])]
+    let mut result = 0
+
+    for (n, [a, b, ..]) in complex {
+        result = result + n * (a + b)
+    }
+
+    // 1*(10+20) + 2*(30+40) + 3*(50+60) = 30 + 140 + 330 = 500
+    assert_eq(result, 500, "complex pattern calculation")
+
+    print("Test 4 passed: Complex pattern in for loop")
+
+    // --- Test 5: Wildcard patterns in for loop ---
+
+    let data = [(1, 100), (2, 200), (3, 300)]
+    let mut first_only = 0
+
+    for (x, _) in data {
+        first_only = first_only + x
+    }
+
+    assert_eq(first_only, 6, "sum using wildcard")
+
+    print("Test 5 passed: Wildcard patterns in for loop")
+
+    print("All for-loop pattern matching tests passed!")
+}
