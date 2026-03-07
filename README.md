@@ -277,7 +277,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 34 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 45 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -316,6 +316,8 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Built-in test runner (`axon test [dir]`) | ✅ Complete |
 | `#[test]` annotation — per-function test cases | ✅ Complete |
 | Regex stdlib (`regex_match/test/replace/split`) | ✅ Complete |
+| Range patterns in match (`n..=m`, `n..m`) | ✅ Complete |
+| `let...else` pattern binding with diverging else | ✅ Complete |
 | True OS-thread parallelism | 🔜 Planned |
 | Compiled backend | 🔜 Planned |
 
