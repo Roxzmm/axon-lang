@@ -1698,6 +1698,19 @@ export class Interpreter {
         break;
       }
 
+      case 'LetElseStmt': {
+        const val = await this.evalExpr(stmt.init, env);
+        const bindings = new Map<string, AxonValue>();
+        if (!this.matchPattern(stmt.pat, val, bindings)) {
+          // Pattern didn't match — execute else branch (expected to diverge)
+          await this.evalExpr(stmt.else_, env);
+          // If else branch didn't throw/return/break, runtime error
+          throw new RuntimeError(`let-else: else branch must diverge (use return, break, or throw)`);
+        }
+        for (const [k, v] of bindings) env.define(k, v);
+        break;
+      }
+
       case 'LetMutStmt': {
         const val = await this.evalExpr(stmt.init, env);
         env.define(stmt.name, val, true);

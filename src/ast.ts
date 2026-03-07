@@ -88,13 +88,14 @@ export interface CallArg {
 // ─── Statements ─────────────────────────────────────────────
 
 export type Stmt =
-  | { kind: 'LetStmt';    pat: Pattern; ty: TypeExpr | null; init: Expr; span: Span }
-  | { kind: 'LetMutStmt'; name: string; ty: TypeExpr | null; init: Expr; span: Span }
-  | { kind: 'AssignStmt'; target: Expr; op: string; value: Expr; span: Span }
-  | { kind: 'ExprStmt';   expr: Expr; span: Span }
-  | { kind: 'ForStmt';       pat: Pattern; iter: Expr; body: Expr; span: Span }
-  | { kind: 'WhileStmt';    cond: Expr; body: Expr; span: Span }
-  | { kind: 'WhileLetStmt'; pat: Pattern; value: Expr; body: Expr; span: Span }
+  | { kind: 'LetStmt';     pat: Pattern; ty: TypeExpr | null; init: Expr; span: Span }
+  | { kind: 'LetElseStmt'; pat: Pattern; ty: TypeExpr | null; init: Expr; else_: Expr; span: Span }
+  | { kind: 'LetMutStmt';  name: string; ty: TypeExpr | null; init: Expr; span: Span }
+  | { kind: 'AssignStmt';  target: Expr; op: string; value: Expr; span: Span }
+  | { kind: 'ExprStmt';    expr: Expr; span: Span }
+  | { kind: 'ForStmt';        pat: Pattern; iter: Expr; body: Expr; span: Span }
+  | { kind: 'WhileStmt';     cond: Expr; body: Expr; span: Span }
+  | { kind: 'WhileLetStmt';  pat: Pattern; value: Expr; body: Expr; span: Span }
 
 // ─── Declarations ────────────────────────────────────────────
 

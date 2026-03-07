@@ -738,6 +738,12 @@ export class TypeChecker {
         this.checkPatternBinding(stmt.pat, ty, env);
         break;
       }
+      case 'LetElseStmt': {
+        const ty = this.checkExpr(stmt.init, env);
+        this.checkPatternBinding(stmt.pat, ty, env);
+        this.checkExpr(stmt.else_, env);
+        break;
+      }
       case 'LetMutStmt': {
         // Pre-register as Unknown to support recursive lambdas
         if (stmt.init.kind === 'Lambda') env.define(stmt.name, T_UNKNOWN);

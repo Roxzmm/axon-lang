@@ -1039,6 +1039,12 @@ export class Parser {
       this.expect(TokenKind.Assign);
       const init = this.parseExpr();
       this.skipSemicolon();
+      // let ... else { block } — pattern must match or else branch executes (must diverge)
+      if (this.check(TokenKind.KwElse) && this.cur().line >= this.tokens[this.pos - 1]?.line) {
+        this.advance();
+        const else_ = this.parseBlock();
+        return { kind: 'LetElseStmt', pat, ty, init, else_, span };
+      }
       return { kind: 'LetStmt', pat, ty, init, span };
     }
 

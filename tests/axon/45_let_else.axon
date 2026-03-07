@@ -1,0 +1,82 @@
+module Test
+
+// Test 45: let ... else — pattern binding with diverging else
+// let Pat = expr else { block that must diverge }
+// If Pat matches: bindings available in rest of scope
+// If Pat doesn't match: else block executes (must return/break/throw)
+
+fn parse_positive(s: String) -> Result<Int, String> {
+    let Ok(n) = parse_int(s) else {
+        return Err($"not a number: {s}")
+    }
+    if n <= 0 {
+        return Err($"not positive: {n}")
+    }
+    Ok(n)
+}
+
+fn head_of(xs: List<Int>) -> Int {
+    let [first, ..] = xs else {
+        return -1
+    }
+    first
+}
+
+fn get_some(opt: Option<String>) -> String {
+    let Some(v) = opt else {
+        return "default"
+    }
+    v
+}
+
+fn main() -> Unit {
+    // --- Test 1: let else with Result ---
+
+    let r1 = parse_positive("42")
+    assert_eq(r1, Ok(42), "42 is positive")
+
+    let r2 = parse_positive("abc")
+    assert(r2 != Ok(0), "abc is not a number")
+
+    let r3 = parse_positive("-5")
+    assert(r3 != Ok(0), "-5 is not positive")
+
+    print("Test 1 passed: let-else with Result unwrapping")
+
+    // --- Test 2: let else with List pattern ---
+
+    let h1 = head_of([10, 20, 30])
+    assert_eq(h1, 10, "head of [10,20,30] = 10")
+
+    let h2 = head_of([])
+    assert_eq(h2, -1, "head of [] = -1 (else branch)")
+
+    print($"Test 2 passed: let-else with List pattern h1={h1}, h2={h2}")
+
+    // --- Test 3: let else with Option ---
+
+    let s1 = get_some(Some("hello"))
+    assert_eq(s1, "hello", "Some unwrapped")
+
+    let s2 = get_some(None)
+    assert_eq(s2, "default", "None returns default")
+
+    print($"Test 3 passed: let-else with Option s1={s1}, s2={s2}")
+
+    // --- Test 4: Inline let-else in function ---
+
+    fn safe_div(a: Int, b: Int) -> Int {
+        let x = if b != 0 { Some(a / b) } else { None }
+        let Some(result) = x else {
+            return 0
+        }
+        result
+    }
+
+    assert_eq(safe_div(10, 2), 5, "10/2=5")
+    assert_eq(safe_div(10, 0), 0, "div by zero returns 0")
+
+    print("Test 4 passed: let-else with inline function")
+
+    print("All let-else tests passed!")
+}
