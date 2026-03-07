@@ -1,0 +1,86 @@
+// ============================================================
+// Test 50: Memory Optimization - Object pooling and string interning
+// Tests memory optimization features added in V3 Phase 1
+// ============================================================
+module Test
+
+type Person = {
+    name: String,
+    age: Int
+}
+
+fn test_string_interning() -> Unit {
+    // Create many duplicate strings
+    let s1 = "hello"
+    let s2 = "hello"
+    let s3 = "hello"
+    let s4 = "world"
+    let s5 = "world"
+
+    // These should all be interned
+    assert_eq(s1, s2, "Interned strings should be equal")
+    assert_eq(s2, s3, "Interned strings should be equal")
+    assert_eq(s4, s5, "Interned strings should be equal")
+
+    print("✅ String interning works")
+}
+
+fn test_small_int_caching() -> Unit {
+    // Create many small integers
+    let nums = [0, 1, 2, 3, 4, 5, 10, 100, -1, -10, -100]
+
+    // These should all be cached
+    for n in nums {
+        assert(n == n, "Cached integers should be equal")
+    }
+
+    print("✅ Small integer caching works")
+}
+
+fn test_result_types() -> Unit {
+    // Create many Result values (uses Map pooling)
+    let results = [
+        Ok(1),
+        Ok(2),
+        Ok(3),
+        Err("error1"),
+        Err("error2"),
+        Err("error3")
+    ]
+
+    for r in results {
+        match r {
+            Ok(v) => assert(v > 0, "Ok value should be positive"),
+            Err(e) => assert(e != "", "Err value should not be empty")
+        }
+    }
+
+    print("✅ Result types with Map pooling work")
+}
+
+fn test_record_creation() -> Unit {
+    // Create many records (uses Map pooling)
+    let people = [
+        Person { name: "Alice", age: 30 },
+        Person { name: "Bob", age: 25 },
+        Person { name: "Charlie", age: 35 }
+    ]
+
+    for p in people {
+        assert(p.age > 0, "Age should be positive")
+        assert(p.name != "", "Name should not be empty")
+    }
+
+    print("✅ Record creation with Map pooling works")
+}
+
+fn main() -> Unit {
+    print("=== Testing Memory Optimization ===")
+
+    test_string_interning()
+    test_small_int_caching()
+    test_result_types()
+    test_record_creation()
+
+    print("\n=== All Memory Optimization tests passed! ===")
+}

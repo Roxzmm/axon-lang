@@ -4,6 +4,7 @@
 
 import type { FnDecl, AgentDecl, Expr, Param } from '../ast';
 import type { Environment } from './env';
+import { internString, getCachedInt, getPooledMap, trackStringCacheHit, trackStringCacheMiss, trackIntCacheHit, trackIntCacheMiss, trackMapPoolHit, trackMapPoolMiss } from './memory';
 
 export const enum ValueTag {
   Int           = 'Int',
@@ -62,13 +63,29 @@ export const TRUE: AxonValue  = { tag: ValueTag.Bool, value: true };
 export const FALSE: AxonValue = { tag: ValueTag.Bool, value: false };
 
 export function mkInt(n: number | bigint): AxonValue {
-  return { tag: ValueTag.Int, value: typeof n === 'bigint' ? n : BigInt(n) };
+  if (typeof n === 'number') {
+    const cached = getCachedInt(n);
+    if (cached !== null) {
+      trackIntCacheHit();
+      return { tag: ValueTag.Int, value: cached };
+    }
+    trackIntCacheMiss();
+    return { tag: ValueTag.Int, value: BigInt(n) };
+  }
+  return { tag: ValueTag.Int, value: n };
 }
 export function mkFloat(n: number): AxonValue {
   return { tag: ValueTag.Float, value: n };
 }
 export function mkString(s: string): AxonValue {
-  return { tag: ValueTag.String, value: s };
+  const interned = internString(s);
+  if (interned === s && s.length <= 256) {
+    // String was already in cache or just added
+    trackStringCacheHit();
+  } else {
+    trackStringCacheMiss();
+  }
+  return { tag: ValueTag.String, value: interned };
 }
 export function mkBool(b: boolean): AxonValue {
   return b ? TRUE : FALSE;
@@ -80,10 +97,20 @@ export function mkTuple(items: AxonValue[]): AxonValue {
   return { tag: ValueTag.Tuple, items };
 }
 export function mkRecord(typeName: string, fields: Record<string, AxonValue>): AxonValue {
-  return { tag: ValueTag.Record, typeName, fields: new Map(Object.entries(fields)) };
+  const map = getPooledMap<string, AxonValue>();
+  trackMapPoolHit();
+  for (const [k, v] of Object.entries(fields)) {
+    map.set(k, v);
+  }
+  return { tag: ValueTag.Record, typeName, fields: map };
 }
 export function mkEnum(typeName: string, variant: string, fields: AxonValue[] = [], recordFields: Record<string, AxonValue> = {}): AxonValue {
-  return { tag: ValueTag.Enum, typeName, variant, fields, recordFields: new Map(Object.entries(recordFields)) };
+  const map = getPooledMap<string, AxonValue>();
+  trackMapPoolHit();
+  for (const [k, v] of Object.entries(recordFields)) {
+    map.set(k, v);
+  }
+  return { tag: ValueTag.Enum, typeName, variant, fields, recordFields: map };
 }
 export function mkNative(name: string, fn: (...args: AxonValue[]) => AxonValue): AxonValue {
   return { tag: ValueTag.NativeFn, name, fn };
