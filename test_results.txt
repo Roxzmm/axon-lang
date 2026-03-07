@@ -1,0 +1,117 @@
+Testing: tests/axon/01_arithmetic.axon
+[32m✓ Type check passed
+Testing: tests/axon/02_strings.axon
+[32m✓ Type check passed
+Testing: tests/axon/03_lists.axon
+[32m✓ Type check passed
+Testing: tests/axon/04_patterns.axon
+[32m✓ Type check passed
+Testing: tests/axon/05_closures.axon
+[32m✓ Type check passed
+Testing: tests/axon/06_control_flow.axon
+[32m✓ Type check passed
+Testing: tests/axon/07_recursion.axon
+[32m✓ Type check passed
+Testing: tests/axon/08_error_handling.axon
+[32m✓ Type check passed
+Testing: tests/axon/09_agents.axon
+[32m✓ Type check passed
+Testing: tests/axon/10_higher_order.axon
+[32m✓ Type check passed
+Testing: tests/axon/11_maps.axon
+[32m✓ Type check passed
+Testing: tests/axon/12_custom_types.axon
+[32m✓ Type check passed
+Testing: tests/axon/13_iterators.axon
+[32m✓ Type check passed
+Testing: tests/axon/14_real_world.axon
+[32m✓ Type check passed
+Testing: tests/axon/15_modules.axon
+[32m✓ Type check passed
+Testing: tests/axon/16_named_args.axon
+[32m✓ Type check passed
+Testing: tests/axon/17_json.axon
+[32m✓ Type check passed
+Testing: tests/axon/18_format.axon
+[32m✓ Type check passed
+Testing: tests/axon/19_io.axon
+[32m✓ Type check passed
+Testing: tests/axon/20_tool_annotation.axon
+[32m✓ Type check passed
+Testing: tests/axon/21_effects_check.axon
+[32m✓ Type check passed
+Testing: tests/axon/22_supervisor.axon
+[32m✓ Type check passed
+Testing: tests/axon/23_strict_effects.axon
+[32m✓ Type check passed
+Testing: tests/axon/24_tool_call.axon
+[32m✓ Type check passed
+Testing: tests/axon/25_ask_all.axon
+[32m✓ Type check passed
+Testing: tests/axon/26_application_annotation.axon
+[32m✓ Type check passed
+Testing: tests/axon/27_generics.axon
+[32m✓ Type check passed
+Testing: tests/axon/28_hot_reload.axon
+[32m✓ Type check passed
+Testing: tests/axon/29_refinement_types.axon
+[32m✓ Type check passed
+Testing: tests/axon/30_loop_range_record_update.axon
+[32m✓ Type check passed
+Testing: tests/axon/31_if_let_while_let.axon
+[32m✓ Type check passed
+Testing: tests/axon/32_impl_methods.axon
+[32m✓ Type check passed
+Testing: tests/axon/33_stdlib_expanded.axon
+[32m✓ Type check passed
+Testing: tests/axon/34_multiline_and_maps.axon
+[32m✓ Type check passed
+Testing: tests/axon/35_effect_handlers.axon
+[32m✓ Type check passed
+Test 1 passed: mock:/etc/config.json
+Test 2 passed: test data
+Testing: tests/axon/36_agent_timeout.axon
+[32m✓ Type check passed
+Test 1a passed: 10
+Test 1b passed: 15
+Testing: tests/axon/37_trace.axon
+[32m✓ Type check passed
+Testing: tests/axon/38_capability_system.axon
+[32m✓ Type check passed
+Test 1 passed: unconstrained agent count = 2
+Test 2 passed: spawn with matching caps succeeds
+Testing: tests/axon/39_channels.axon
+[32m✓ Type check passed
+Test 1 passed: buffered channel send/recv = 42, 99
+Test 2 passed: chan_size works correctly
+Testing: tests/axon/40_chan_select.axon
+[32m✓ Type check passed
+Test 1 passed: assert_eq and assert_ne work
+Test 2 passed: chan_select idx=1, val=99
+Testing: tests/axon/41_replay.axon
+[32m✓ Type check passed
+Test 41 passed: replay infrastructure verified
+Testing: tests/axon/42_regex.axon
+[32m✓ Type check passed
+Test 1 passed: regex_test works
+Test 2 passed: regex_match groups = [2026-03-07, 2026, 03, 07]
+Testing: tests/axon/43_test_annotation.axon
+[32m✓ Type check passed
+Testing: tests/axon/44_range_patterns.axon
+[32m✓ Type check passed
+Test 1 passed: inclusive int range patterns
+Test 2 passed: float range patterns
+Testing: tests/axon/45_let_else.axon
+[32m✓ Type check passed
+Test 1 passed: let-else with Result unwrapping
+Test 2 passed: let-else with List pattern h1=10, h2=-1
+Testing: tests/axon/46_param_destructuring.axon
+[32m✓ Type check passed
+Test 1 passed: Tuple destructuring
+Test 2 passed: List destructuring
+Testing: tests/axon/47_for_pattern_matching.axon
+[32m✓ Type check passed
+Test 1 passed: Tuple destructuring in for loop
+Test 2 passed: List destructuring in for loop
+Testing: tests/axon/48_roadmap_verification.axon
+[32m✓ Type check passed
