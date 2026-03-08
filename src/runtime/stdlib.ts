@@ -545,7 +545,7 @@ const ioFileFns: Record<string, NativeFn> = {
       const fs = require('fs') as typeof import('fs');
       const stat = fs.statSync(p);
       if (stat.isDirectory()) {
-        fs.rmdirSync(p, { recursive: true });
+        fs.rmSync(p, { recursive: true, force: true });
       } else {
         fs.unlinkSync(p);
       }
