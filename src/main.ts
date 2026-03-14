@@ -702,6 +702,17 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'lsp': {
+      const { spawn } = await import('child_process');
+      const lspPath = path.join(__dirname, 'lsp', 'server.js');
+      if (!fs.existsSync(lspPath)) {
+        console.error('LSP server not found. Run npm run build first.');
+        process.exit(1);
+      }
+      spawn('node', [lspPath], { stdio: 'inherit', cwd: process.cwd() });
+      break;
+    }
+
     case 'repl': {
       await startRepl();
       break;

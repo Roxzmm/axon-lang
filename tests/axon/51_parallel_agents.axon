@@ -1,0 +1,39 @@
+// Test parallel agent creation and communication
+
+agent Worker {
+    state {
+        id: Int = 0
+    }
+
+    on SetId(n: Int) {
+        id = n
+    }
+
+    on Process(x: Int) -> Int {
+        id * x
+    }
+}
+
+fn main() -> Unit {
+    print("Starting parallel test...")
+    let w1 = spawn_parallel Worker
+    print("Worker 1 spawned")
+    let w2 = spawn_parallel Worker
+    print("Worker 2 spawned")
+    let w3 = spawn_parallel Worker
+    print("Worker 3 spawned")
+
+    w1.send(SetId(10))
+    w2.send(SetId(20))
+    w3.send(SetId(30))
+    print("IDs set")
+
+    let r1 = w1.ask(Process(5))
+    print($"Result 1: {r1}")
+    let r2 = w2.ask(Process(5))
+    print($"Result 2: {r2}")
+    let r3 = w3.ask(Process(5))
+    print($"Result 3: {r3}")
+    
+    print("Parallel test complete!")
+}

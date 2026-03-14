@@ -926,7 +926,8 @@ export class Parser {
     }
 
     // spawn
-    if (tok.kind === TokenKind.KwSpawn) {
+    if (tok.kind === TokenKind.KwSpawn || tok.kind === TokenKind.KwSpawnParallel) {
+      const isParallel = tok.kind === TokenKind.KwSpawnParallel;
       this.advance();
       const agentName = this.expectIdent();
       const spawnLine = this.tokens[this.pos - 1]?.line ?? 0;
@@ -950,7 +951,7 @@ export class Parser {
         timeout = this.parseExpr();
         this.expect(TokenKind.RParen);
       }
-      return { kind: 'Spawn', agentName, initMsg: null, timeout, caps, span };
+      return { kind: 'Spawn', agentName, initMsg: null, timeout, caps, isParallel, span };
     }
 
     // Ok(e) / Err(e) / Some(e)

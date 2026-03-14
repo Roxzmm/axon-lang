@@ -18,6 +18,9 @@ import {
 } from './runtime/value';
 import { registerStdlib, toolRegistry as stdlibToolRegistry, httpRequest, jsToAxon, axonToJs } from './runtime/stdlib';
 import { spawnAgent, hotUpdateAgent, listAgents, AgentSpawnConfig } from './runtime/agent';
+import { Worker } from 'worker_threads';
+import { serializeAxonValue } from './runtime/serializer';
+import * as path from 'path';
 import { parse } from './parser';
 
 // ─── Helper: extract message type + args from a message value ─
@@ -82,7 +85,7 @@ export class Interpreter {
   private builtinNames = new Set<string>();
   // Capability stack: when inside an agent handler with granted caps, restrict operations
   // null entry = unconstrained (spawned without `with [...]`)
-  private capabilityStack: Array<Set<string> | null> = [];
+  public capabilityStack: Array<Set<string> | null> = [];
   // Trace support: when set, emit JSONL trace events for effectful operations
   private tracer: ((event: Record<string, unknown>) => void) | null = null;
   // Replay mode: map from fn name → queue of recorded result values
@@ -1348,6 +1351,21 @@ export class Interpreter {
           else if (tv.tag === ValueTag.Float) timeoutMs = tv.value;
         }
         const ref = new AgentRef(decl.name, state, handlers, timeoutMs, grantedCaps);
+        
+        if (expr.isParallel) {
+          const workerPath = path.join(__dirname, 'runtime', 'worker_entry.js');
+          const worker = new Worker(workerPath, {
+            workerData: {
+              agentName: decl.name,
+              decl: decl,
+              state: Array.from(state.entries()).map(([k, v]) => [k, serializeAxonValue(v)]),
+              timeoutMs,
+              grantedCaps: grantedCaps ? Array.from(grantedCaps) : null
+            }
+          });
+          ref.setWorker(worker);
+        }
+
         const { registerAgent } = await import('./runtime/agent');
         registerAgent(ref);
 

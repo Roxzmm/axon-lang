@@ -5,6 +5,8 @@
 import type { FnDecl, AgentDecl, Expr, Param } from '../ast';
 import type { Environment } from './env';
 import { internString, getCachedInt, getPooledMap, trackStringCacheHit, trackStringCacheMiss, trackIntCacheHit, trackIntCacheMiss, trackMapPoolHit, trackMapPoolMiss } from './memory';
+import { Worker } from 'worker_threads';
+import { serializeAxonValue, deserializeAxonValue } from './serializer';
 
 export const enum ValueTag {
   Int           = 'Int',
@@ -143,6 +145,11 @@ export class AgentRef {
   // Supervisor callback: called when a handler throws an unhandled error
   public onCrash?: (ref: AgentRef, error: Error) => void;
 
+  public isParallel: boolean = false;
+  public worker: Worker | null = null;
+  private msgIdCounter = 0;
+  private pendingRequests = new Map<string, { resolve: (v: AxonValue) => void, reject: (e: Error) => void }>();
+
   constructor(name: string, state: Map<string, AxonValue>, handlers: Map<string, AgentHandlerFn>, timeoutMs: number | null = null, grantedCaps: Set<string> | null = null) {
     this.name        = name;
     this.id          = `${name}#${Math.random().toString(36).slice(2, 8)}`;
@@ -152,13 +159,67 @@ export class AgentRef {
     this.grantedCaps = grantedCaps;
   }
 
-  stop(): void { this.stopped = true; }
+  setWorker(worker: Worker) {
+    this.isParallel = true;
+    this.worker = worker;
+    this.worker.on('message', (msg) => {
+      if (msg.type === 'response') {
+        const req = this.pendingRequests.get(msg.id);
+        if (req) {
+          this.pendingRequests.delete(msg.id);
+          if (msg.error) {
+            req.reject(new Error(msg.error));
+          } else {
+            req.resolve(deserializeAxonValue(msg.result));
+          }
+        }
+      } else if (msg.type === 'crash') {
+        if (this.onCrash) {
+          this.onCrash(this, new Error(msg.error));
+        }
+      }
+    });
+    this.worker.on('error', (err) => {
+      if (this.onCrash) {
+        this.onCrash(this, err);
+      }
+    });
+  }
+
+  stop(): void {
+    this.stopped = true;
+    if (this.worker) {
+      this.worker.terminate();
+    }
+  }
 
   send(type: string, args: AxonValue[]): void {
+    if (this.isParallel && this.worker) {
+      const id = String(++this.msgIdCounter);
+      this.worker.postMessage({
+        id,
+        type: 'send',
+        handler: type,
+        args: args.map(serializeAxonValue)
+      });
+      return;
+    }
     this.enqueue(type, args).catch(() => {}); // fire-and-forget
   }
 
   ask(type: string, args: AxonValue[]): Promise<AxonValue> {
+    if (this.isParallel && this.worker) {
+      return new Promise((resolve, reject) => {
+        const id = String(++this.msgIdCounter);
+        this.pendingRequests.set(id, { resolve, reject });
+        this.worker!.postMessage({
+          id,
+          type: 'ask',
+          handler: type,
+          args: args.map(serializeAxonValue)
+        });
+      });
+    }
     return this.enqueue(type, args);
   }
 
