@@ -1,0 +1,52 @@
+// Minimal Axon Parser - Pure recursive approach
+// Uses helper functions with accumulator pattern
+
+fn first(toks) { toks[0] }
+fn rest(toks) { slice(toks, 1, len(toks)) }
+fn is_kw(t) { len(t) > 0 && char_at(t, 0) == "K" }
+fn is_id(t) { len(t) > 0 && char_at(t, 0) == "I" }
+fn is_int(t) { len(t) > 0 && char_at(t, 0) == "I" && char_at(t, 1) == "n" }
+
+fn parse_let(toks) {
+  // toks = ["Kw|let", "Id|name", "Pun|=", Int, ...]
+  let name = slice(toks[1], 3, 4);  // "Id|x" -> "x"
+  let val = toks[3];
+  [["Let", name, val], rest(rest(rest(toks)))]
+}
+
+fn parse_fn(toks) {
+  // toks = ["Kw|fn", "Id|name", ...]
+  let name = slice(toks[1], 3, 4);
+  [["Fn", name], rest(toks)]
+}
+
+fn parse_one(toks) {
+  if len(toks) == 0 { [["EOF"], []] }
+  else {
+    let t = toks[0];
+    if is_kw(t) {
+      if char_at(t, 3) == "l" { parse_let(toks) }  // let
+      else { parse_fn(toks) }  // fn
+    } else { [["Skip"], toks] }
+  }
+}
+
+fn parse_all(toks, acc) {
+  if len(toks) == 0 { acc }
+  else {
+    let r = parse_one(toks);
+    let parsed = r[0];
+    let remaining = r[1];
+    parse_all(remaining, list_concat(acc, parsed))
+  }
+}
+
+fn parse(toks) {
+  parse_all(toks, [])
+}
+
+fn main() {
+  let toks = ["Kw|let", "Id|x", "Pun|=", "Int|10", "Kw|fn", "Id|main"];
+  let r = parse(toks);
+  print(len(r))
+}

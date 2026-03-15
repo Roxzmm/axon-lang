@@ -9,6 +9,34 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.6.0] - 2026-03-15
+
+### V4 Self-hosting — Bytecode Compiler and Axon Lexer
+
+This release introduces the foundation for Axon self-hosting: a bytecode compiler and the beginning of an Axon-written compiler.
+
+#### Bytecode Compiler (Phase 1-2 Complete)
+
+- **Bytecode instruction set**: `src/compiler/bytecode.ts` defines OpCode enum (NOP, LOAD, STORE, CALL, JUMP, arithmetic, logic, etc.)
+- **AST → Bytecode compiler**: `src/compiler/compiler.ts` compiles LetStmt, AssignStmt, WhileStmt, ForStmt, If/else, Break/Continue, Lambda, Match, List, Binary ops, Call
+- **Stack-based VM**: `src/compiler/vm.ts` executes bytecode with call stack, local/global variables, host function calls
+- **Verified**: `let x = 10; let y = 20; print(x + y)` → outputs `30n`
+
+#### Axon Lexer (Phase 3 A1 Complete)
+
+- **`lexer.axon`**: First component of the Axon-written compiler
+- Uses pure recursion with accumulator pattern (Axon variables are immutable)
+- Token format: `"KIND|value@line:col"`
+- Verified: `"let x = 10"` → 11 tokens correctly parsed
+
+#### Project Infrastructure
+
+- Worker threads parallelism for agent execution
+- LSP server with completion, hover, diagnostics
+- Memory optimization: object pooling, string interning
+
+---
+
 ## [0.5.1] - 2026-03-07
 
 ### Range patterns in `match`

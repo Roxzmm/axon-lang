@@ -320,8 +320,12 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | `let...else` pattern binding with diverging else | ✅ Complete |
 | Parameter destructuring in functions/lambdas | ✅ Complete |
 | Pattern matching in for loops | ✅ Complete |
-| True OS-thread parallelism | 🔜 Planned |
-| Compiled backend | 🔜 Planned |
+| **V4 Self-hosting** | |
+| Bytecode compiler (Phase 1-2) | ✅ Complete |
+| Stack-based VM | ✅ Complete |
+| Axon Lexer (`lexer.axon`) | ✅ Complete |
+| Axon Parser (`parser.axon`) | 🔄 In Progress |
+| Full self-hosting | 🔜 Planned |
 
 ---
 
