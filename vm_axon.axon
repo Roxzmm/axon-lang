@@ -1,0 +1,159 @@
+// ============================================================
+// Axon Virtual Machine - Self-hosted in Axon
+// ============================================================
+// A minimal VM written in Axon to achieve true self-hosting
+
+// --- VM Execution (simplified) ---
+
+// Run bytecode with simple stack simulation
+// Returns final stack
+fn run_bytecode(code, constants) {
+  let mut stack = [];
+  let mut pc = 0;
+  
+  while pc < len(code) {
+    let instr = code[pc];
+    let op = instr[0];
+    
+    if op == "LOAD_CONST" {
+      let idx = instr[1];
+      let value = constants[idx];
+      stack = list_concat(stack, [value]);
+      pc = pc + 1
+    }
+    else if op == "ADD" {
+      if len(stack) >= 2 {
+        let mut new_stack = [];
+        let mut i = 0;
+        while i < len(stack) - 2 {
+          new_stack = list_concat(new_stack, [stack[i]]);
+          i = i + 1
+        };
+        let b = stack[len(stack) - 1];
+        let a = stack[len(stack) - 2];
+        stack = list_concat(new_stack, [a + b])
+      };
+      pc = pc + 1
+    }
+    else if op == "SUB" {
+      if len(stack) >= 2 {
+        let mut new_stack = [];
+        let mut i = 0;
+        while i < len(stack) - 2 {
+          new_stack = list_concat(new_stack, [stack[i]]);
+          i = i + 1
+        };
+        let b = stack[len(stack) - 1];
+        let a = stack[len(stack) - 2];
+        stack = list_concat(new_stack, [a - b])
+      };
+      pc = pc + 1
+    }
+    else if op == "MUL" {
+      if len(stack) >= 2 {
+        let mut new_stack = [];
+        let mut i = 0;
+        while i < len(stack) - 2 {
+          new_stack = list_concat(new_stack, [stack[i]]);
+          i = i + 1
+        };
+        let b = stack[len(stack) - 1];
+        let a = stack[len(stack) - 2];
+        stack = list_concat(new_stack, [a * b])
+      };
+      pc = pc + 1
+    }
+    else if op == "DIV" {
+      if len(stack) >= 2 {
+        let mut new_stack = [];
+        let mut i = 0;
+        while i < len(stack) - 2 {
+          new_stack = list_concat(new_stack, [stack[i]]);
+          i = i + 1
+        };
+        let b = stack[len(stack) - 1];
+        let a = stack[len(stack) - 2];
+        stack = list_concat(new_stack, [a / b])
+      };
+      pc = pc + 1
+    }
+    else if op == "POP" {
+      if len(stack) > 0 {
+        stack = slice(stack, 0, len(stack) - 1)
+      };
+      pc = pc + 1
+    }
+    else if op == "HALT" {
+      pc = len(code)  // Exit loop
+    }
+    else {
+      pc = pc + 1
+    }
+  };
+  
+  stack
+}
+
+// --- Test ---
+
+fn test_vm_add() {
+  // Test: 10 + 20 = 30
+  let code = [
+    ["LOAD_CONST", 0],
+    ["LOAD_CONST", 1],
+    ["ADD", 0],
+    ["HALT", 0]
+  ];
+  let constants = [10, 20];
+  
+  let result = run_bytecode(code, constants);
+  
+  print("=== VM Test: ADD ===");
+  print("Code: LOAD_CONST 0, LOAD_CONST 1, ADD, HALT");
+  print("Constants: [10, 20]");
+  print("Result: " + str(result));
+  print("Expected: [30]");
+  
+  if len(result) > 0 && result[0] == 30 {
+    print("✅ TEST PASSED")
+  } else {
+    print("❌ TEST FAILED")
+  }
+}
+
+fn test_vm_complex() {
+  // Test: (5 + 10) * 3 = 45
+  let code = [
+    ["LOAD_CONST", 0],  // 5
+    ["LOAD_CONST", 1],  // 10
+    ["ADD", 0],         // 5 + 10 = 15
+    ["LOAD_CONST", 2],   // 3
+    ["MUL", 0],         // 15 * 3 = 45
+    ["HALT", 0]
+  ];
+  let constants = [5, 10, 3];
+  
+  let result = run_bytecode(code, constants);
+  
+  print("");
+  print("=== VM Test: Complex ===");
+  print("Code: 5 + 10 * 3 = 45");
+  print("Result: " + str(result));
+  print("Expected: [45]");
+  
+  if len(result) > 0 && result[0] == 45 {
+    print("✅ TEST PASSED")
+  } else {
+    print("❌ TEST FAILED")
+  }
+}
+
+fn main() {
+  print("=== Axon Self-Hosted VM ===");
+  print("");
+  test_vm_add();
+  test_vm_complex();
+  print("");
+  print("=== VM Ready ===");
+  print("The VM is now written in Axon!")
+}
