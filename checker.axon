@@ -1,0 +1,244 @@
+// ============================================================
+// Axon Type Checker - Self-hosted in Axon
+// ============================================================
+// A simplified type checker for bootstrapping
+// Handles basic type inference and checking
+
+// --- Type Representations ---
+
+// Basic types
+fn t_int() { ["Int"] }
+fn t_float() { ["Float"] }
+fn t_bool() { ["Bool"] }
+fn t_string() { ["String"] }
+fn t_unit() { ["Unit"] }
+
+// Composite types
+fn t_list(elem) { ["List", elem] }
+fn t_option(inner) { ["Option", inner] }
+fn t_fn(params, ret) { ["Fn", params, ret] }
+
+// --- Type Environment ---
+
+fn make_env() {
+  // Simple env: list of [name, type] pairs
+  []
+}
+
+fn env_lookup(env, name) {
+  let mut result = None;
+  let mut i = 0;
+  while i < len(env) {
+    let entry = env[i];
+    if entry[0] == name {
+      result = Some(entry[1]);
+      i = len(env)
+    } else {
+      i = i + 1
+    }
+  };
+  result
+}
+
+fn env_extend(env, name, ty) {
+  list_concat(env, [[name, ty]])
+}
+
+// --- Type Inference ---
+
+// Infer type from AST node
+fn infer_expr(ast, env) {
+  let kind = ast[0];
+  
+  if kind == "IntLit" { t_int() }
+  else if kind == "FloatLit" { t_float() }
+  else if kind == "BoolLit" { t_bool() }
+  else if kind == "StringLit" { t_string() }
+  else if kind == "Ident" {
+    let name = ast[1];
+    let result = env_lookup(env, name);
+    match result {
+      Some(ty) => ty
+      None => t_unknown()
+    }
+  }
+  else if kind == "Binary" {
+    let op = ast[1];
+    let left = ast[2];
+    let right = ast[3];
+    // For now, assume numeric types for +,-,*,/
+    if op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" {
+      t_bool()
+    } else {
+      // Check if both operands are same type
+      t_int()  // Simplified: assume Int for now
+    }
+  }
+  else if kind == "Unary" {
+    let op = ast[1];
+    if op == "!" { t_bool() }
+    else { t_int() }
+  }
+  else if kind == "If" {
+    // Return type of then branch (simplified)
+    let then_branch = ast[2];
+    infer_expr(then_branch, env)
+  }
+  else if kind == "Block" {
+    // Return type of last expression
+    let stmts = ast[1];
+    if len(stmts) == 0 { t_unit() }
+    else {
+      let last = stmts[len(stmts) - 1];
+      infer_expr(last, env)
+    }
+  }
+  else if kind == "Call" {
+    // Look up function type
+    let callee = ast[1];
+    if callee[0] == "Ident" {
+      let name = callee[1];
+      let result = env_lookup(env, name);
+      match result {
+        Some(ty) => {
+          if ty[0] == "Fn" { ty[2] }
+          else { t_unknown() }
+        }
+        None => t_unknown()
+      }
+    } else { t_unknown() }
+  }
+  else { t_unknown() }
+}
+
+fn t_unknown() { ["Unknown"] }
+
+// --- Type Checking ---
+
+fn check_expr(ast, env, expected) {
+  let inferred = infer_expr(ast, env);
+  // For bootstrapping, we just infer - full checking comes later
+  [inferred, env]
+}
+
+// Check a statement
+fn check_stmt(ast, env) {
+  let kind = ast[0];
+  
+  if kind == "LetStmt" {
+    let name = ast[1];
+    let value = ast[2];
+    let ty = infer_expr(value, env);
+    let new_env = env_extend(env, name, ty);
+    [ty, new_env]
+  }
+  else if kind == "Return" {
+    let value = ast[1];
+    let ty = infer_expr(value, env);
+    [ty, env]
+  }
+  else {
+    [t_unit(), env]
+  }
+}
+
+// Check a function declaration
+fn check_fn(ast, env) {
+  let name = ast[1];
+  let params = ast[2];
+  let body = ast[3];
+  
+  // Build parameter types
+  let mut param_types = [];
+  let mut i = 0;
+  while i < len(params) {
+    param_types = list_concat(param_types, [t_unknown()]);
+    i = i + 1
+  };
+  
+  // Extend env with params
+  let mut fn_env = env;
+  i = 0;
+  while i < len(params) {
+    fn_env = env_extend(fn_env, params[i], param_types[i]);
+    i = i + 1
+  };
+  
+  // Infer return type from body
+  let ret_ty = infer_expr(body, fn_env);
+  let fn_ty = t_fn(param_types, ret_ty);
+  
+  // Extend env with function
+  let final_env = env_extend(env, name, fn_ty);
+  
+  [fn_ty, final_env]
+}
+
+// Check a program
+fn check_program(ast, env) {
+  let decls = ast[1];
+  let mut check_env = env;
+  let mut results = [];
+  
+  let mut i = 0;
+  while i < len(decls) {
+    let decl = decls[i];
+    let kind = decl[0];
+    
+    if kind == "FnDecl" {
+      let result = check_fn(decl, check_env);
+      results = list_concat(results, [result[0]]);
+      check_env = result[1];
+    }
+    else if kind == "LetStmt" {
+      let result = check_stmt(decl, check_env);
+      results = list_concat(results, [result[0]]);
+      check_env = result[1];
+    };
+    
+    i = i + 1
+  };
+  
+  ["Program", results, check_env]
+}
+
+// --- Test ---
+
+fn test_check_let() {
+  let env = make_env();
+  // let x = 10
+  let ast = ["LetStmt", "x", ["IntLit", "10"]];
+  let result = check_stmt(ast, env);
+  print(result)
+}
+
+fn test_check_fn() {
+  let env = make_env();
+  // fn add(a, b) { a + b }
+  let ast = ["FnDecl", "add", ["a", "b"], ["Binary", "+", ["Ident", "a"], ["Ident", "b"]]];
+  let result = check_fn(ast, env);
+  print(result)
+}
+
+fn test_infer_binary() {
+  let env = make_env();
+  // 1 + 2
+  let ast = ["Binary", "+", ["IntLit", "1"], ["IntLit", "2"]];
+  let ty = infer_expr(ast, env);
+  print(ty)
+}
+
+fn main() {
+  print("=== Testing Axon Type Checker ===");
+  print("");
+  print("Test 1: let x = 10");
+  test_check_let();
+  print("");
+  print("Test 2: fn add(a, b) { a + b }");
+  test_check_fn();
+  print("");
+  print("Test 3: 1 + 2");
+  test_infer_binary();
+  print("");
+  print("=== Tests Complete ===")
+}

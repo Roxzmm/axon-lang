@@ -1,52 +1,522 @@
-// Minimal Axon Parser - Pure recursive approach
-// Uses helper functions with accumulator pattern
+// ============================================================
+// Axon Parser - Self-hosted in Axon
+// ============================================================
+// A recursive descent parser that transforms token streams into AST
 
-fn first(toks) { toks[0] }
-fn rest(toks) { slice(toks, 1, len(toks)) }
-fn is_kw(t) { len(t) > 0 && char_at(t, 0) == "K" }
-fn is_id(t) { len(t) > 0 && char_at(t, 0) == "I" }
-fn is_int(t) { len(t) > 0 && char_at(t, 0) == "I" && char_at(t, 1) == "n" }
+// --- Token Utilities ---
 
-fn parse_let(toks) {
-  // toks = ["Kw|let", "Id|name", "Pun|=", Int, ...]
-  let name = slice(toks[1], 3, 4);  // "Id|x" -> "x"
-  let val = toks[3];
-  [["Let", name, val], rest(rest(rest(toks)))]
+fn token_kind(tok) {
+  if len(tok) == 0 { "EOF" }
+  else { tok[0] }
 }
 
-fn parse_fn(toks) {
-  // toks = ["Kw|fn", "Id|name", ...]
-  let name = slice(toks[1], 3, 4);
-  [["Fn", name], rest(toks)]
+fn token_value(tok) {
+  if len(tok) < 2 { "" }
+  else { tok[1] }
 }
 
-fn parse_one(toks) {
-  if len(toks) == 0 { [["EOF"], []] }
-  else {
-    let t = toks[0];
-    if is_kw(t) {
-      if char_at(t, 3) == "l" { parse_let(toks) }  // let
-      else { parse_fn(toks) }  // fn
-    } else { [["Skip"], toks] }
+fn is_kw(tok, kw) {
+  token_kind(tok) == "Kw" && token_value(tok) == kw
+}
+
+fn is_pun(tok, pun) {
+  token_kind(tok) == "Pun" && token_value(tok) == pun
+}
+
+fn is_id(tok) { token_kind(tok) == "Id" }
+fn is_int(tok) { token_kind(tok) == "Int" }
+fn is_float(tok) { token_kind(tok) == "Float" }
+fn is_bool(tok) { token_kind(tok) == "Bool" }
+fn is_string(tok) { token_kind(tok) == "String" }
+
+// --- Parser State ---
+
+// Parser state as tuple: [tokens, position]
+fn make_parser(tokens) {
+  [tokens, 0]
+}
+
+fn peek(parser) {
+  let toks = parser[0];
+  let p = parser[1];
+  if p < len(toks) { toks[p] }
+  else { ["EOF", ""] }
+}
+
+fn peek_n(parser, n) {
+  let toks = parser[0];
+  let p = parser[1] + n;
+  if p < len(toks) { toks[p] }
+  else { ["EOF", ""] }
+}
+
+fn consume(parser) {
+  let tok = peek(parser);
+  [[parser[0], parser[1] + 1], tok]
+}
+
+fn expect(parser, kind) {
+  let tok = peek(parser);
+  if token_kind(tok) != kind {
+    print(["Error: expected", kind, "but got", token_kind(tok)])
+    parser
+  } else {
+    consume(parser)[0]
   }
 }
 
-fn parse_all(toks, acc) {
-  if len(toks) == 0 { acc }
+fn match_tok(parser, kind) {
+  let tok = peek(parser);
+  if token_kind(tok) == kind { 
+    let result = consume(parser);
+    [true, result[0]]
+  }
+  else { [false, parser] }
+}
+
+fn match_kw(parser, kw) {
+  let tok = peek(parser);
+  if token_kind(tok) == "Kw" && token_value(tok) == kw { 
+    let result = consume(parser);
+    result[0]  // Return just the new parser
+  }
+  else { parser }  // Return parser unchanged
+}
+
+fn match_pun(parser, pun) {
+  let tok = peek(parser);
+  if token_kind(tok) == "Pun" && token_value(tok) == pun { 
+    let result = consume(parser);
+    result[0]  // Return just the new parser
+  }
+  else { parser }  // Return parser unchanged
+}
+
+// --- AST Node Constructors (using tagged lists) ---
+
+// AST nodes use format: [kind, ...fields]
+fn mk_int_lit(value) { ["IntLit", value] }
+fn mk_float_lit(value) { ["FloatLit", value] }
+fn mk_bool_lit(value) { ["BoolLit", value] }
+fn mk_string_lit(value) { ["StringLit", value] }
+fn mk_ident(name) { ["Ident", name] }
+fn mk_binary(op, left, right) { ["Binary", op, left, right] }
+fn mk_unary(op, expr) { ["Unary", op, expr] }
+fn mk_let(name, value) { ["LetStmt", name, value] }
+fn mk_fn(name, params, body) { ["FnDecl", name, params, body] }
+fn mk_block(stmts) { ["Block", stmts] }
+fn mk_if(cond, then, else_) { ["If", cond, then, else_] }
+fn mk_call(callee, args) { ["Call", callee, args] }
+fn mk_return(value) { ["Return", value] }
+fn mk_while(cond, body) { ["While", cond, body] }
+fn mk_for(name, iter, body) { ["For", name, iter, body] }
+fn mk_match(scrutinee, arms) { ["Match", scrutinee, arms] }
+fn mk_loop(body) { ["Loop", body] }
+fn mk_break(value) { ["Break", value] }
+
+// --- Parsing: Literals ---
+
+fn parse_literal(parser) {
+  let tok = peek(parser);
+  let kind = token_kind(tok);
+  
+  if kind == "Int" {
+    let p = consume(parser)[0];
+    [mk_int_lit(token_value(tok)), p]
+  }
+  else if kind == "Float" {
+    let p = consume(parser)[0];
+    [mk_float_lit(token_value(tok)), p]
+  }
+  else if kind == "Bool" {
+    let p = consume(parser)[0];
+    [mk_bool_lit(token_value(tok)), p]
+  }
+  else if kind == "String" {
+    let p = consume(parser)[0];
+    [mk_string_lit(token_value(tok)), p]
+  }
+  else if kind == "Id" {
+    let p = consume(parser)[0];
+    [mk_ident(token_value(tok)), p]
+  }
+  else if is_pun(tok, "(") {
+    let p = match_pun(parser, "(");
+    let result = parse_expr(p, 0);
+    let expr = result[0];
+    let p2 = result[1];
+    let p3 = match_pun(p2, ")");
+    [expr, p3]
+  }
   else {
-    let r = parse_one(toks);
-    let parsed = r[0];
-    let remaining = r[1];
-    parse_all(remaining, list_concat(acc, parsed))
+    // Try block as fallback
+    parse_block(parser)
   }
 }
 
-fn parse(toks) {
-  parse_all(toks, [])
+// --- Parsing: Expressions (Precedence Climbing) ---
+
+// Operator precedence table
+// Higher number = higher precedence
+fn op_prec(op) {
+  if op == "||" { 1 }
+  else if op == "&&" { 2 }
+  else if op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" { 3 }
+  else if op == "+" || op == "-" { 4 }
+  else if op == "*" || op == "/" || op == "%" { 5 }
+  else if op == "**" { 6 }
+  else { 0 }
+}
+
+fn is_binop(tok) {
+  if token_kind(tok) != "Pun" { false }
+  else {
+    let v = token_value(tok);
+    v == "+" || v == "-" || v == "*" || v == "/" || v == "%" || v == "**" ||
+    v == "==" || v == "!=" || v == "<" || v == ">" || v == "<=" || v == ">=" ||
+    v == "&&" || v == "||"
+  }
+}
+
+fn parse_expr(parser, min_prec) {
+  // Parse primary expression
+  let result = parse_literal(parser);
+  let mut lhs = result[0];
+  let mut p = result[1];
+  
+  // Loop through binary operators
+  let mut done = false;
+  while !done {
+    let tok = peek(p);
+    if !is_binop(tok) { done = true }
+    else {
+      let op = token_value(tok);
+      let prec = op_prec(op);
+      if prec < min_prec { done = true }
+      else {
+        let p2 = consume(p)[0];
+        let rhs_result = parse_expr(p2, prec + 1);
+        lhs = mk_binary(op, lhs, rhs_result[0]);
+        p = rhs_result[1];
+      }
+    }
+  };
+  
+  [lhs, p]
+}
+
+// --- Parsing: Blocks ---
+
+fn parse_block(parser) {
+  let mut p = match_pun(parser, "{");
+  let mut stmts = [];
+  
+  let mut done = false;
+  while !done {
+    let tok = peek(p);
+    if is_pun(tok, "}") { done = true }
+    else if token_kind(tok) == "EOF" { done = true }
+    else {
+      let result = parse_stmt(p);
+      stmts = list_concat(stmts, [result[0]]);
+      p = result[1];
+    }
+  };
+  
+  let p2 = match_pun(p, "}");
+  [mk_block(stmts), p2]
+}
+
+// --- Parsing: Statements ---
+
+fn parse_stmt(parser) {
+  let tok = peek(parser);
+  
+  // let x = expr
+  if is_kw(tok, "let") {
+    let p = match_kw(parser, "let");
+    let name_tok = peek(p);
+    let name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    let p3 = match_pun(p2, "=");
+    let val_result = parse_expr(p3, 0);
+    let p4 = match_pun(val_result[1], ";");
+    [mk_let(name, val_result[0]), p4]
+  }
+  // const x = expr
+  else if is_kw(tok, "const") {
+    let p = match_kw(parser, "const");
+    let name_tok = peek(p);
+    let name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    let p3 = match_pun(p2, "=");
+    let val_result = parse_expr(p3, 0);
+    let p4 = match_pun(val_result[1], ";");
+    [mk_let(name, val_result[0]), p4]
+  }
+  // return expr
+  else if is_kw(tok, "return") {
+    let p = match_kw(parser, "return");
+    let val_result = parse_expr(p, 0);
+    let p2 = match_pun(val_result[1], ";");
+    [mk_return(val_result[0]), p2]
+  }
+  // if expr { block } else { block }
+  else if is_kw(tok, "if") {
+    let p = match_kw(parser, "if");
+    let cond_result = parse_expr(p, 0);
+    let then_result = parse_block(cond_result[1]);
+    let else_tok = peek(then_result[1]);
+    if is_kw(else_tok, "else") {
+      let p_else = match_kw(then_result[1], "else");
+      let else_result = parse_block(p_else);
+      [mk_if(cond_result[0], then_result[0], Some(else_result[0])), else_result[1]]
+    } else {
+      [mk_if(cond_result[0], then_result[0], None), then_result[1]]
+    }
+  }
+  // while expr { block }
+  else if is_kw(tok, "while") {
+    let p = match_kw(parser, "while");
+    let cond_result = parse_expr(p, 0);
+    let body_result = parse_block(cond_result[1]);
+    [mk_while(cond_result[0], body_result[0]), body_result[1]]
+  }
+  // for name in expr { block }
+  else if is_kw(tok, "for") {
+    let p = match_kw(parser, "for");
+    let name_tok = peek(p);
+    let var_name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    let p3 = match_kw(p2, "in");
+    let iter_result = parse_expr(p3, 0);
+    let body_result = parse_block(iter_result[1]);
+    [mk_for(var_name, iter_result[0], body_result[0]), body_result[1]]
+  }
+  // loop { block }
+  else if is_kw(tok, "loop") {
+    let p = match_kw(parser, "loop");
+    let body_result = parse_block(p);
+    [mk_loop(body_result[0]), body_result[1]]
+  }
+  // break
+  else if is_kw(tok, "break") {
+    let p = match_kw(parser, "break");
+    let p2 = match_pun(p, ";");
+    [mk_break(None), p2]
+  }
+  // match expr { ... }
+  else if is_kw(tok, "match") {
+    let p = match_kw(parser, "match");
+    let scrut_result = parse_expr(p, 0);
+    let mut p2 = match_pun(scrut_result[1], "{");
+    let mut arms = [];
+    let mut done = false;
+    while !done {
+      let arm_tok = peek(p2);
+      if is_pun(arm_tok, "}") { done = true }
+      else if token_kind(arm_tok) == "EOF" { done = true }
+      else {
+        // Parse pattern (just identifier for now)
+        let pat = peek(p2);
+        let pat_name = token_value(pat);
+        let p3 = consume(p2)[0];
+        let p4 = match_pun(p3, "=>");
+        // Parse arm body
+        let arm_result = parse_expr(p4, 0);
+        arms = list_concat(arms, [[pat_name, arm_result[0]]]);
+        p2 = arm_result[1];
+        // Consume comma if present
+        let next_tok = peek(p2);
+        if is_pun(next_tok, ",") {
+          p2 = consume(p2)[0];
+        }
+      }
+    };
+    let p5 = match_pun(p2, "}");
+    [mk_match(scrut_result[0], arms), p5]
+  }
+  // Expression statement
+  else {
+    let result = parse_expr(parser, 0);
+    let p2 = match_pun(result[1], ";");
+    [result[0], p2]
+  }
+}
+
+// --- Parsing: Declarations ---
+
+fn parse_decl(parser) {
+  let tok = peek(parser);
+  
+  // fn name(params) -> ReturnType { body }
+  if is_kw(tok, "fn") {
+    let p = match_kw(parser, "fn");
+    let name_tok = peek(p);
+    let name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    
+    // Parse params
+    let mut p3 = match_pun(p2, "(");
+    let mut params = [];
+    let mut done = false;
+    while !done {
+      let ptok = peek(p3);
+      if is_pun(ptok, ")") { done = true }
+      else {
+        if len(params) > 0 {
+          let p_comma = match_pun(p3, ",");
+          let ptok2 = peek(p_comma);
+          params = list_concat(params, [token_value(ptok2)]);
+          p3 = consume(p_comma)[0];
+        } else {
+          params = list_concat(params, [token_value(ptok)]);
+          p3 = consume(p3)[0];
+        }
+      }
+    };
+    let p4 = match_pun(p3, ")");
+    
+    // Parse body
+    let body_result = parse_block(p4);
+    
+    [mk_fn(name, params, body_result[0]), body_result[1]]
+  }
+  // let x = expr
+  else if is_kw(tok, "let") {
+    let p = match_kw(parser, "let");
+    let name_tok = peek(p);
+    let name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    let p3 = match_pun(p2, "=");
+    let val_result = parse_expr(p3, 0);
+    [mk_let(name, val_result[0]), val_result[1]]
+  }
+  else {
+    // Fallback to statement
+    parse_stmt(parser)
+  }
+}
+
+fn parse_program(parser) {
+  let decls = [];
+  let mut done = false;
+  
+  while !done {
+    let tok = peek(parser);
+    if token_kind(tok) == "EOF" { done = true }
+    else {
+      let result = parse_decl(parser);
+      decls = list_concat(decls, [result[0]]);
+      parser = result[1];
+    }
+  };
+  
+  ["Program", decls]
+}
+
+// --- Test ---
+
+fn test_parse_let() {
+  // Tokens: let x = 10;
+  let tokens = [
+    ["Kw", "let"], ["Id", "x"], ["Pun", "="], ["Int", "10"], ["Pun", ";"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_stmt(parser);
+  print(result[0])
+}
+
+fn test_parse_expr() {
+  // Tokens: 1 + 2 * 3
+  let tokens = [
+    ["Int", "1"], ["Pun", "+"], ["Int", "2"], ["Pun", "*"], ["Int", "3"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_expr(parser, 0);
+  print(result[0])
+}
+
+fn test_parse_fn() {
+  // Tokens: fn add(a, b) { a + b }
+  let tokens = [
+    ["Kw", "fn"], ["Id", "add"], ["Pun", "("], ["Id", "a"], ["Pun", ","], 
+    ["Id", "b"], ["Pun", ")"], ["Pun", "{"], ["Id", "a"], ["Pun", "+"], 
+    ["Id", "b"], ["Pun", "}"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_decl(parser);
+  print(result[0])
+}
+
+fn test_parse_if() {
+  // Tokens: if x > 0 { 1 } else { 2 }
+  let tokens = [
+    ["Kw", "if"], ["Id", "x"], ["Pun", ">"], ["Int", "0"], ["Pun", "{"], 
+    ["Int", "1"], ["Pun", "}"], ["Kw", "else"], ["Pun", "{"], ["Int", "2"], ["Pun", "}"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_stmt(parser);
+  print(result[0])
+}
+
+fn test_parse_while() {
+  // Tokens: while x > 0 { x }
+  let tokens = [
+    ["Kw", "while"], ["Id", "x"], ["Pun", ">"], ["Int", "0"], ["Pun", "{"], 
+    ["Id", "x"], ["Pun", "}"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_stmt(parser);
+  print(result[0])
+}
+
+fn test_parse_for() {
+  // Tokens: for x in [1,2,3] { print(x) }
+  let tokens = [
+    ["Kw", "for"], ["Id", "x"], ["Kw", "in"], ["Id", "list"], ["Pun", "{"], 
+    ["Id", "print"], ["Pun", "("], ["Id", "x"], ["Pun", ")"], ["Pun", "}"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_stmt(parser);
+  print(result[0])
+}
+
+fn test_parse_match() {
+  // Tokens: match x { a => 1, b => 2 }
+  let tokens = [
+    ["Kw", "match"], ["Id", "x"], ["Pun", "{"], 
+    ["Id", "a"], ["Pun", "=>"], ["Int", "1"], ["Pun", ","],
+    ["Id", "b"], ["Pun", "=>"], ["Int", "2"], ["Pun", "}"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_stmt(parser);
+  print(result[0])
 }
 
 fn main() {
-  let toks = ["Kw|let", "Id|x", "Pun|=", "Int|10", "Kw|fn", "Id|main"];
-  let r = parse(toks);
-  print(len(r))
+  print("=== Testing Axon Parser ===");
+  print("");
+  print("Test 1: let x = 10");
+  test_parse_let();
+  print("");
+  print("Test 2: 1 + 2 * 3");
+  test_parse_expr();
+  print("");
+  print("Test 3: fn add(a, b) { a + b }");
+  test_parse_fn();
+  print("");
+  print("Test 4: if x > 0 { 1 } else { 2 }");
+  test_parse_if();
+  print("");
+  print("Test 5: while x > 0 { x = x - 1 }");
+  test_parse_while();
+  print("");
+  print("Test 6: for x in list { print(x) }");
+  test_parse_for();
+  print("");
+  print("Test 7: match x { a => 1, b => 2 }");
+  test_parse_match();
+  print("");
+  print("=== Tests Complete ===")
 }

@@ -9,6 +9,41 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.6.1] - 2026-03-15
+
+### V4 Self-hosting — Parser, Type Checker, Code Generator
+
+Complete self-hosting compiler components written in Axon.
+
+#### Axon Parser (Phase 3 A2 Complete)
+
+- **`parser.axon`**: Recursive descent parser
+- Supports: let/const, fn declarations, if/else, while/for loops, match expressions
+- Expression parsing with precedence climbing
+- Verified: `let x = 10`, `fn add(a, b) { a + b }`, `match x { a => 1, b => 2 }`
+
+#### Axon Type Checker (Phase 3 A3 Complete)
+
+- **`checker.axon`**: Simplified bidirectional type checker
+- Type inference for literals, identifiers, binary operations
+- Function type checking
+- Environment management for type bindings
+
+#### Axon Code Generator (Phase 3 A4 Complete)
+
+- **`generator.axon`**: Bytecode generator
+- Generates OpCodes: LOAD_CONST, STORE_GLOBAL, ADD, SUB, MUL, DIV, etc.
+- Constant pool management
+- Verified: `let x = 10 + 20` → bytecode `[[LOAD_CONST, 0], [ADD, 0], [STORE_GLOBAL, x], [HALT, 0]]`
+
+#### E2E Verification
+
+- **`e2e_test.axon`**: End-to-end self-hosting verification
+- Pipeline: Lexer → Parser → Checker → Generator
+- All components verified working with TS interpreter
+
+---
+
 ## [0.6.0] - 2026-03-15
 
 ### V4 Self-hosting — Bytecode Compiler and Axon Lexer

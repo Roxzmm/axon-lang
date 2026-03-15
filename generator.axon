@@ -1,0 +1,189 @@
+// ============================================================
+// Axon Code Generator - Self-hosted in Axon
+// ============================================================
+// Generates bytecode from AST for the Axon VM
+
+// --- OpCodes ---
+
+fn op_load_const(idx) { ["LOAD_CONST", idx] }
+fn op_load_global(name) { ["LOAD_GLOBAL", name] }
+fn op_store_global(name) { ["STORE_GLOBAL", name] }
+fn op_call(n) { ["CALL", n] }
+fn op_return() { ["RETURN", 0] }
+fn op_add() { ["ADD", 0] }
+fn op_sub() { ["SUB", 0] }
+fn op_mul() { ["MUL", 0] }
+fn op_div() { ["DIV", 0] }
+fn op_eq() { ["EQ", 0] }
+fn op_ne() { ["NE", 0] }
+fn op_lt() { ["LT", 0] }
+fn op_gt() { ["GT", 0] }
+fn op_pop() { ["POP", 0] }
+fn op_halt() { ["HALT", 0] }
+
+// --- Code Generator State ---
+// [constants, code]
+
+fn make_codegen() {
+  [[], []]
+}
+
+fn get_constants(cg) { cg[0] }
+fn get_code(cg) { cg[1] }
+
+fn add_constant(cg, value) {
+  let constants = cg[0];
+  let idx = len(constants);
+  [[list_concat(constants, [value]), cg[1]], idx]
+}
+
+fn emit_instr(cg, instr) {
+  [cg[0], list_concat(cg[1], [instr])]
+}
+
+// --- Code Generation: Expressions ---
+
+fn codegen_expr(ast, cg) {
+  let kind = ast[0];
+  
+  if kind == "IntLit" {
+    let result = add_constant(cg, ast[1]);
+    let cg2 = result[0];
+    [cg2, op_load_const(result[1])]
+  }
+  else if kind == "Binary" {
+    let op = ast[1];
+    let left = ast[2];
+    let right = ast[3];
+    
+    // Generate left
+    let r1 = codegen_expr(left, cg);
+    let cg1 = r1[0];
+    
+    // Generate right
+    let r2 = codegen_expr(right, cg1);
+    let cg2 = r2[0];
+    
+    // Generate op
+    let instr = 
+      if op == "+" { op_add() }
+      else if op == "-" { op_sub() }
+      else if op == "*" { op_mul() }
+      else if op == "/" { op_div() }
+      else if op == "==" { op_eq() }
+      else if op == "!=" { op_ne() }
+      else if op == "<" { op_lt() }
+      else if op == ">" { op_gt() }
+      else { ["NOP", 0] };
+    
+    [cg2, instr]
+  }
+  else if kind == "Ident" {
+    [cg, op_load_global(ast[1])]
+  }
+  else {
+    [cg, ["NOP", 0]]
+  }
+}
+
+// --- Code Generation: Statements ---
+
+fn codegen_stmt(ast, cg) {
+  let kind = ast[0];
+  
+  if kind == "LetStmt" {
+    let name = ast[1];
+    let value = ast[2];
+    let r1 = codegen_expr(value, cg);
+    let cg2 = r1[0];
+    let instr = r1[1];
+    [cg2, instr, op_store_global(name)]
+  }
+  else if kind == "Return" {
+    [cg, op_return()]
+  }
+  else {
+    // Expression statement
+    let r1 = codegen_expr(ast, cg);
+    let cg2 = r1[0];
+    [cg2, r1[1], op_pop()]
+  }
+}
+
+// --- Code Generation: Program ---
+
+fn codegen_program(ast) {
+  let cg = make_codegen();
+  let decls = ast[1];
+  let mut cg2 = cg;
+  let mut code = [];
+  
+  let mut i = 0;
+  while i < len(decls) {
+    let decl = decls[i];
+    if decl[0] == "FnDecl" {
+      let body = decl[3];
+      let mut j = 0;
+      while j < len(body[1]) {
+        let stmt = body[1][j];
+        let result = codegen_stmt(stmt, cg2);
+        cg2 = result[0];
+        code = list_concat(code, [result[1]]);
+        if len(result) > 2 {
+          code = list_concat(code, [result[2]])
+        };
+        j = j + 1
+      }
+    }
+    else if decl[0] == "LetStmt" {
+      let result = codegen_stmt(decl, cg2);
+      cg2 = result[0];
+      code = list_concat(code, [result[1]]);
+      if len(result) > 2 {
+        code = list_concat(code, [result[2]])
+      }
+    };
+    i = i + 1
+  };
+  
+  code = list_concat(code, [op_halt()]);
+  [get_constants(cg2), code]
+}
+
+// --- Test ---
+
+fn test_codegen_let() {
+  // let x = 10
+  let ast = ["Program", [["LetStmt", "x", ["IntLit", "10"]]]];
+  let result = codegen_program(ast);
+  print(result)
+}
+
+fn test_codegen_expr() {
+  // 1 + 2
+  let ast = ["Program", [["LetStmt", "x", ["Binary", "+", ["IntLit", "1"], ["IntLit", "2"]]]]];
+  let result = codegen_program(ast);
+  print(result)
+}
+
+fn test_codegen_fn() {
+  // fn main() { 1 + 2 }
+  let ast = ["Program", [["FnDecl", "main", [], ["Block", [["Binary", "+", ["IntLit", "1"], ["IntLit", "2"]]]]]]];
+  let result = codegen_program(ast);
+  print(result)
+}
+
+fn main() {
+  print("=== Testing Axon Code Generator ===");
+  print("");
+  print("Test 1: let x = 10");
+  test_codegen_let();
+  print("");
+  print("Test 2: let x = 1 + 2");
+  test_codegen_expr();
+  print("");
+  print("Test 3: fn main() { 1 + 2 }");
+  test_codegen_fn();
+  print("");
+  print("=== Tests Complete ===")
+}
