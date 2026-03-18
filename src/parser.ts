@@ -11,8 +11,8 @@ import type {
 } from './ast';
 
 export class ParseError extends Error {
-  constructor(msg: string, public line: number, public col: number) {
-    super(`Parse error at ${line}:${col}: ${msg}`);
+  constructor(msg: string, public line: number, public col: number, public code = 'E2001') {
+    super(msg);
     this.name = 'ParseError';
   }
 }

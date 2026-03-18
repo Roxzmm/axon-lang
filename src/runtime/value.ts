@@ -453,7 +453,7 @@ export class TrySignal {
   constructor(public value: AxonValue) {}  // carries Err value
 }
 export class RuntimeError extends Error {
-  constructor(msg: string, public span?: { line: number; col: number }) {
+  constructor(msg: string, public span?: { line: number; col: number }, public code = 'E3001') {
     super(msg);
     this.name = 'RuntimeError';
   }

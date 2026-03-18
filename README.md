@@ -56,6 +56,8 @@ npm link          # makes `axon` available globally
 axon run examples/01_hello_world.axon
 axon repl
 axon check myfile.axon
+axon compile myfile.axon           # Compile to bytecode
+axon compile myfile.axon --wasm    # Compile to WebAssembly
 axon run myfile.axon --watch      # hot reload on save
 axon run myfile.axon --strict-effects   # enforce effect declarations on all functions
 ```
@@ -321,11 +323,15 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | Parameter destructuring in functions/lambdas | ✅ Complete |
 | Pattern matching in for loops | ✅ Complete |
 | **V4 Self-hosting** | |
+|---|---|
 | Bytecode compiler (Phase 1-2) | ✅ Complete |
 | Stack-based VM | ✅ Complete |
 | Axon Lexer (`lexer.axon`) | ✅ Complete |
-| Axon Parser (`parser.axon`) | 🔄 In Progress |
-| Full self-hosting | 🔜 Planned |
+| Axon Parser (`parser.axon`) | ✅ Complete |
+| Axon Code Generator (`generator.axon`) | ✅ Complete |
+| Axon VM (`vm_axon.axon`) | ✅ Complete |
+| Axon Optimizer (`optimizer.axon`) | ✅ Complete |
+| **Full self-hosting** | ✅ Verified |
 
 ---
 

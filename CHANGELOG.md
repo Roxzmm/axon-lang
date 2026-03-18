@@ -9,6 +9,22 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.6.2] - 2026-03-17
+
+### Bug Fixes
+
+- **`wasm.ts`**: Fixed bigint handling in LOAD_CONST bytecode operation
+  - WASM backend now correctly generates `(i32.const N)` for integer literals
+  - Previously only handled number type, not bigint
+
+### Documentation
+
+- Added `spec/ARCHITECTURE.md` (EN) and `spec/ARCHITECTURE_ZH.md` (ZH)
+- Updated `spec/LANGUAGE_SPEC.md` to English (concise version)
+- Added `spec/LANGUAGE_SPEC_ZH.md` (full Chinese version)
+
+---
+
 ## [0.6.1] - 2026-03-15
 
 ### V4 Self-hosting — Parser, Type Checker, Code Generator

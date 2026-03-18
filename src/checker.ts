@@ -211,7 +211,7 @@ export class TypeChecker {
       'tuple_get', 'tuple_len',
       // Compare / random / misc
       'compare', 'min_val', 'max_val', 'random', 'random_int', 'random_bool',
-      'now_ms', 'now_s', 'timestamp', 'sleep', 'sleep_ms', 'uuid',
+      'now_ms', 'now_s', 'timestamp', 'sleep', 'sleep_ms', 'uuid', 'read_line',
       'read_file', 'write_file', 'file_exists',
       'type_of', 'exit',
       // Conversions
@@ -225,6 +225,7 @@ export class TypeChecker {
     this.typeEnv.define('print',    { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
     this.typeEnv.define('println',  { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
     this.typeEnv.define('eprint',   { kind: 'Fn', params: [U], ret: T_UNIT, effects: ['IO'] });
+    this.typeEnv.define('read_line', { kind: 'Fn', params: [], ret: T_STRING, effects: ['IO'] });
     this.typeEnv.define('assert',   { kind: 'Fn', params: [T_BOOL, T_STRING], ret: T_UNIT, effects: [] });
     this.typeEnv.define('assert_eq',{ kind: 'Fn', params: [U, U, T_STRING], ret: T_UNIT, effects: [] });
     this.typeEnv.define('assert_ne',{ kind: 'Fn', params: [U, U, T_STRING], ret: T_UNIT, effects: [] });

@@ -800,6 +800,21 @@ export function registerStdlib(env: Environment, define: (name: string, val: Axo
     return UNIT;
   }));
 
+  // ── Async IO ───────────────────────────────────────────────
+  define('read_line', mkNativeAsync('read_line', async () => {
+    return new Promise((resolve) => {
+      const readline = require('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      rl.question('', (answer: string) => {
+        rl.close();
+        resolve(mkString(answer));
+      });
+    });
+  }));
+
   // ── Async HTTP functions ───────────────────────────────────
   define('http_get', mkNativeAsync('http_get', async (urlVal) => {
     const url = asStr(urlVal, 'http_get');

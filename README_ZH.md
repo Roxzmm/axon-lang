@@ -56,6 +56,8 @@ npm link          # 使 `axon` 命令全局可用
 axon run examples/01_hello_world.axon
 axon repl
 axon check myfile.axon
+axon compile myfile.axon           # 编译为字节码
+axon compile myfile.axon --wasm    # 编译为 WebAssembly
 axon run myfile.axon --watch           # 保存即热更新
 axon run myfile.axon --strict-effects  # 强制所有函数声明副作用
 ```

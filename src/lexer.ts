@@ -201,8 +201,8 @@ const KEYWORDS: Record<string, TokenKind> = {
 };
 
 export class LexError extends Error {
-  constructor(msg: string, public line: number, public col: number) {
-    super(`Lex error at ${line}:${col}: ${msg}`);
+  constructor(msg: string, public line: number, public col: number, public code = 'E1001') {
+    super(msg);
     this.name = 'LexError';
   }
 }
