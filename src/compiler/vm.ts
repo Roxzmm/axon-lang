@@ -1,4 +1,5 @@
 import { OpCode, BytecodeProgram, BytecodeFunction, Instruction } from './bytecode';
+import { RuntimeError } from '../runtime/value';
 
 export class VM {
   private program: BytecodeProgram;
@@ -6,10 +7,14 @@ export class VM {
   private hostFuncs: Map<string, Function> = new Map();
   private callStack: { fn: BytecodeFunction; pc: number; locals: any[] }[] = [];
   private stack: any[] = [];
+  private stackSize = 0;
+  
+  private inlineCache: Map<string, { fn: Function; hits: number }> = new Map();
 
   constructor(program: BytecodeProgram, hostFuncs?: Record<string, Function>) {
     this.program = program;
     this.globals = new Array(program.constants.length).fill(undefined);
+    this.stack = new Array(1024);
     if (hostFuncs) {
       this.hostFuncs = new Map(Object.entries(hostFuncs));
     }
@@ -31,42 +36,41 @@ export class VM {
       switch (instr.op) {
         case OpCode.NOP: break;
         
-        case OpCode.POP: this.stack.pop(); break;
-        case OpCode.DUP: this.stack.push(this.stack[this.stack.length - 1]); break;
+        case OpCode.POP: this.stackSize--; break;
+        case OpCode.DUP: this.stack[this.stackSize++] = this.stack[this.stackSize - 1]; break;
         
         case OpCode.LOAD_CONST: {
           const c = this.program.constants[instr.arg as number];
-          this.stack.push(c);
+          this.stack[this.stackSize++] = c;
           break;
         }
         
         case OpCode.LOAD_LOCAL: {
           const idx = instr.arg as number;
-          this.stack.push(locals[idx]);
+          this.stack[this.stackSize++] = locals[idx];
           break;
         }
         
         case OpCode.STORE_LOCAL: {
-          const val = this.stack.pop();
+          const val = this.stack[--this.stackSize];
           const idx = instr.arg as number;
-          if (locals[idx] === undefined) locals[idx] = val;
-          else locals[idx] = val;
+          locals[idx] = val;
           break;
         }
         
         case OpCode.LOAD_GLOBAL: {
           const name = this.program.constants[instr.arg as number];
           if (typeof name === 'string' && this.hostFuncs.has(name)) {
-            this.stack.push(this.hostFuncs.get(name));
+            this.stack[this.stackSize++] = this.hostFuncs.get(name);
           } else {
             const idx = typeof name === 'string' ? this.globals.indexOf(name) : name;
-            this.stack.push(this.globals[idx] ?? null);
+            this.stack[this.stackSize++] = this.globals[idx] ?? null;
           }
           break;
         }
         
         case OpCode.STORE_GLOBAL: {
-          const val = this.stack.pop();
+          const val = this.stack[--this.stackSize];
           const name = this.program.constants[instr.arg as number];
           const idx = typeof name === 'string' ? this.globals.indexOf(name) : name;
           this.globals[idx] = val;
@@ -75,23 +79,22 @@ export class VM {
         
         case OpCode.CALL: {
           const n = instr.arg as number;
-          const callee = this.stack.pop();
-          const args = this.stack.splice(-n);
+          const callee = this.stack[--this.stackSize];
+          const args: any[] = [];
+          for (let i = n - 1; i >= 0; i--) args[i] = this.stack[--this.stackSize];
           
           if (typeof callee === 'function') {
-             // Host function call
              try {
                const result = callee(...args);
-               this.stack.push(result);
+               this.stack[this.stackSize++] = result;
              } catch (e: any) {
                throw new Error(`Runtime error: ${e.message}`);
              }
           } else if (typeof callee === 'number') {
-            // Function index call (simplified)
              const fn = this.program.functions[callee];
              if (fn) {
                const result = this.runFunction(fn, args);
-               this.stack.push(result);
+               this.stack[this.stackSize++] = result;
              } else {
                throw new Error(`Unknown function index: ${callee}`);
              }
@@ -102,7 +105,7 @@ export class VM {
         }
         
         case OpCode.RETURN: {
-          const val = this.stack.pop();
+          const val = this.stack[--this.stackSize];
           return val;
         }
         
@@ -112,71 +115,72 @@ export class VM {
         }
         
         case OpCode.JUMP_IF_FALSE: {
-          const cond = this.stack.pop();
+          const cond = this.stack[--this.stackSize];
           if (!cond) pc = instr.arg as number;
           break;
         }
         
         case OpCode.ADD: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a + b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a + b;
           break;
         }
         
         case OpCode.SUB: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a - b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a - b;
           break;
         }
         
         case OpCode.MUL: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a * b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a * b;
           break;
         }
         
         case OpCode.DIV: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a / b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          if (b === 0) throw new RuntimeError('Division by zero', undefined, 'E3002');
+          this.stack[this.stackSize++] = a / b;
           break;
         }
 
         case OpCode.MOD: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a % b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a % b;
           break;
         }
         
         case OpCode.EQ: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a === b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a === b;
           break;
         }
         
         case OpCode.NE: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a !== b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a !== b;
           break;
         }
         
         case OpCode.LT: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a < b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a < b;
           break;
         }
 
         case OpCode.LE: {
-          const b = this.stack.pop();
-          const a = this.stack.pop();
-          this.stack.push(a <= b);
+          const b = this.stack[--this.stackSize];
+          const a = this.stack[--this.stackSize];
+          this.stack[this.stackSize++] = a <= b;
           break;
         }
 

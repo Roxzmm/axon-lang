@@ -53,6 +53,35 @@ export function compile(expr: any): BytecodeProgram {
   
   let body: any[] = [];
   const kind = expr.kind || 'Program';
+  
+  // First pass: compile all functions
+  if (kind === 'Program' || kind === 'ModuleDecl') {
+    for (const item of expr.items || []) {
+      if (item.kind === 'FnDecl' && item.name !== 'main') {
+        const savedCtx = { 
+          locals: new Map(ctx.locals), 
+          localIndices: new Map(ctx.localIndices) 
+        };
+        // Set up params as locals
+        let localIdx = 0;
+        for (const p of item.params || []) {
+          const name = p.name || (p.pat?.kind === 'IdentPat' ? p.pat.name : 'arg');
+          ctx.localIndices.set(name, localIdx++);
+        }
+        const fnBody = [...(item.body?.stmts || [])];
+        if (item.body?.tail) fnBody.push(item.body.tail);
+        const fn = compileBlock(ctx, fnBody, () => {});
+        fn.name = item.name || 'anonymous';
+        fn.arity = item.params?.length || 0;
+        fn.locals = fn.arity;
+        // Restore ctx
+        ctx.locals = savedCtx.locals;
+        ctx.localIndices = savedCtx.localIndices;
+      }
+    }
+  }
+  
+  // Now compile main
   if (kind === 'Program' || kind === 'ModuleDecl') {
     const main = expr.items.find((i: any) => i.kind === 'FnDecl' && i.name === 'main');
     if (main) {
@@ -423,8 +452,12 @@ function compileExpr(ctx: Context, code: Instruction[], expr: any): void {
   
   if (kind === 'Call') {
     for (const arg of expr.args || []) compileExpr(ctx, code, arg.value);
-    compileExpr(ctx, code, expr.callee);
-    emit(code, OpCode.CALL, (expr.args || []).length);
+    // If callee is an identifier, get its name and pass to CALL
+    if (expr.callee?.kind === 'Ident') {
+      emit(code, OpCode.CALL, emitLoadConst(ctx, expr.callee.name));
+    } else {
+      emit(code, OpCode.CALL, (expr.args || []).length);
+    }
     return;
   }
 
