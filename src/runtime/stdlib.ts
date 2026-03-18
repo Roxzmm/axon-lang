@@ -804,6 +804,7 @@ export function registerStdlib(env: Environment, define: (name: string, val: Axo
   define('read_line', mkNativeAsync('read_line', async () => {
     return new Promise((resolve) => {
       const readline = require('readline');
+      console.log("");
       const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
