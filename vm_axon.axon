@@ -83,6 +83,25 @@ fn run_bytecode(code, constants) {
       };
       pc = pc + 1
     }
+    else if op == "CALL" {
+      // CALL n - call function with n arguments
+      // For now, just pop the arguments and continue
+      let n = instr[1];
+      // Simple: just use top value as result
+      if len(stack) >= n {
+        // Keep only the result (last value)
+        let mut new_stack = [];
+        let mut i = 0;
+        while i < len(stack) - n {
+          new_stack = list_concat(new_stack, [stack[i]]);
+          i = i + 1
+        };
+        // Add a placeholder result
+        new_stack = list_concat(new_stack, [0]);
+        stack = new_stack
+      };
+      pc = pc + 1
+    }
     else if op == "HALT" {
       pc = len(code)  // Exit loop
     }

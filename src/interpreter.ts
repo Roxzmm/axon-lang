@@ -682,6 +682,14 @@ export class Interpreter {
     );
   }
 
+  async callFn(name: string, args: AxonValue[] = []): Promise<AxonValue> {
+    const fn = this.globalEnv.tryGet(name);
+    if (!fn) {
+      throw new Error(`Function not found: ${name}`);
+    }
+    return this.callValueAsync(fn, args);
+  }
+
   // ── Execute Program ───────────────────────────────────────
 
   async execute(program: Program, filePath?: string, runEntryPoint = true): Promise<void> {

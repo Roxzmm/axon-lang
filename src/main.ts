@@ -12,6 +12,10 @@ import { Interpreter, ReplResult } from './interpreter';
 import { HotReloadManager, createDefaultLogger } from './hot_reload';
 import { RuntimeError, ValueTag, displayValue } from './runtime/value';
 import { formatProgram } from './formatter';
+import { compile as compileBytecode } from './compiler/compiler';
+import { compileToWasm } from './compiler/wasm';
+import { serialize } from './compiler/bytecode';
+import { AxonPipeline } from './axon_bridge';
 
 // ─── Colors ──────────────────────────────────────────────────
 
@@ -72,8 +76,9 @@ async function runFile(filePath: string, opts: { watch?: boolean; typeCheck?: bo
     program = parse(source, abs);
   } catch (e) {
     if (e instanceof ParseError) {
+      const errCode = e.code || 'E2001';
       const basename = path.basename(abs);
-      console.error(c('red', c('bold', 'Parse error: ')) + e.message);
+      console.error(c('red', c('bold', `Parse error ${errCode}: `)) + e.message);
       console.error(c('gray', `  --> ${basename}:${e.line}:${e.col}`));
       const lines = source.split('\n');
       const lineStr = lines[e.line - 1];
@@ -83,7 +88,8 @@ async function runFile(filePath: string, opts: { watch?: boolean; typeCheck?: bo
         console.error(c('gray', `     │`) + ' '.repeat(e.col) + c('red', '^'));
       }
     } else if (e instanceof LexError) {
-      console.error(c('red', c('bold', 'Lex error: ')) + (e instanceof Error ? e.message : String(e)));
+      const errCode = e.code || 'E1001';
+      console.error(c('red', c('bold', `Lex error ${errCode}: `)) + (e instanceof Error ? e.message : String(e)));
     } else {
       console.error(e);
     }
@@ -497,7 +503,8 @@ async function startRepl(): Promise<void> {
 
 function printRuntimeError(e: unknown, file: string, source?: string): void {
   if (e instanceof RuntimeError) {
-    console.error(c('red', c('bold', 'Runtime error: ')) + e.message);
+    const errCode = e.code || 'E3001';
+    console.error(c('red', c('bold', `Runtime error ${errCode}: `)) + e.message);
     if (e.span) {
       const basename = path.basename(file);
       console.error(c('gray', `  --> ${basename}:${e.span.line}:${e.span.col}`));
@@ -542,7 +549,16 @@ async function main(): Promise<void> {
       const trace         = args.includes('--trace');
       const traceFileIdx  = args.indexOf('--trace-file');
       const traceFile     = traceFileIdx !== -1 ? args[traceFileIdx + 1] : undefined;
-      if (!file) { console.error('Usage: axon run <file.axon> [--watch] [--strict-effects] [--trace] [--trace-file <path>]'); process.exit(1); }
+      const useAxon      = args.includes('--use-axon');
+      if (!file) { console.error('Usage: axon run <file.axon> [--watch] [--strict-effects] [--trace] [--trace-file <path>] [--use-axon]'); process.exit(1); }
+      if (useAxon) {
+        console.log(c('cyan', 'Using self-hosted Axon pipeline (experimental)'));
+        const source = fs.readFileSync(path.resolve(file), 'utf-8');
+        const axonPipeline = new AxonPipeline();
+        await axonPipeline.runWithAxon(source, file);
+        console.log(c('green', 'Self-hosted pipeline complete!'));
+        break;
+      }
       await runFile(file, { watch, typeCheck: !noType, strictEffects, trace, traceFile });
       break;
     }
@@ -695,6 +711,41 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'compile': {
+      const file = args[1];
+      if (!file) { console.error('Usage: axon compile <file.axon> [--wasm] [--output <file>]'); process.exit(1); }
+      
+      const wasmFlag = args.includes('--wasm');
+      const outputIdx = args.indexOf('--output');
+      const outputFile = outputIdx !== -1 ? args[outputIdx + 1] : undefined;
+      
+      const abs = path.resolve(file);
+      if (!fs.existsSync(abs)) { console.error(`File not found: ${file}`); process.exit(1); }
+      
+      const source = fs.readFileSync(abs, 'utf-8');
+      let program;
+      try { program = parse(source, abs); }
+      catch (e) { console.error('Parse error:', (e as Error).message); process.exit(1); }
+      
+      const compiled = compileBytecode(program);
+      
+      if (wasmFlag) {
+        const wasm = compileToWasm(compiled);
+        if (outputFile) {
+          fs.writeFileSync(outputFile, wasm.wat);
+          console.log(c('green', `WebAssembly written to ${outputFile}`));
+        } else {
+          console.log(wasm.wat);
+        }
+      } else {
+        const bytecode = serialize(compiled);
+        const outFile = outputFile || abs.replace(/\.axon$/, '.axbc');
+        fs.writeFileSync(outFile, bytecode);
+        console.log(c('green', `Bytecode written to ${outFile}`));
+      }
+      break;
+    }
+
     case 'fmt': {
       const file = args[1];
       if (!file) { console.error('Usage: axon fmt <file.axon>'); process.exit(1); }
@@ -738,6 +789,7 @@ ${c('cyan', 'Options for run:')}
   --strict-effects     Enforce effect declarations on ALL functions (not just annotated ones)
   --trace              Emit JSONL trace events for effectful operations to stderr
   --trace-file <path>  Emit JSONL trace events to a file (instead of stderr)
+  --use-axon           Use self-hosted Axon pipeline (experimental)
 
 ${c('cyan', 'Examples:')}
   axon run demo/counter.axon

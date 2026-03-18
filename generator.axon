@@ -81,6 +81,23 @@ fn codegen_expr(ast, cg) {
   else if kind == "Ident" {
     [cg, op_load_global(ast[1])]
   }
+  else if kind == "Call" {
+    // Call: ["Call", callee, args]
+    let callee = ast[1];
+    let args = ast[2];
+    // Generate code for each argument
+    let mut cg2 = cg;
+    let mut arg_code = [];
+    let mut j = 0;
+    while j < len(args) {
+      let arg_result = codegen_expr(args[j], cg2);
+      cg2 = arg_result[0];
+      arg_code = list_concat(arg_code, [arg_result[1]]);
+      j = j + 1
+    };
+    // Call with arg count
+    [cg2, arg_code, op_call(len(args))]
+  }
   else {
     [cg, ["NOP", 0]]
   }

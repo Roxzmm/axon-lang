@@ -103,7 +103,7 @@ fn mk_ident(name) { ["Ident", name] }
 fn mk_binary(op, left, right) { ["Binary", op, left, right] }
 fn mk_unary(op, expr) { ["Unary", op, expr] }
 fn mk_let(name, value) { ["LetStmt", name, value] }
-fn mk_fn(name, params, body) { ["FnDecl", name, params, body] }
+fn mk_fn(name, params, retTy, body) { ["FnDecl", name, params, retTy, body] }
 fn mk_block(stmts) { ["Block", stmts] }
 fn mk_if(cond, then, else_) { ["If", cond, then, else_] }
 fn mk_call(callee, args) { ["Call", callee, args] }
@@ -113,6 +113,30 @@ fn mk_for(name, iter, body) { ["For", name, iter, body] }
 fn mk_match(scrutinee, arms) { ["Match", scrutinee, arms] }
 fn mk_loop(body) { ["Loop", body] }
 fn mk_break(value) { ["Break", value] }
+fn mk_module(name) { ["ModuleDecl", name] }
+fn mk_list(elems) { ["List", elems] }
+fn mk_record(fields) { ["Record", fields] }
+
+// --- Parsing: Ident or Call ---
+
+fn parse_ident_or_call(parser) {
+  let tok = peek(parser);
+  if token_kind(tok) != "Id" {
+    [mk_ident("error"), parser]
+  } else {
+    let name = token_value(tok);
+    let p_after_id = consume(parser)[0];
+    let next_tok = peek(p_after_id);
+    if is_pun(next_tok, "(") {
+      let p_after_paren = match_pun(p_after_id, "(");
+      // Simple: no args for now, just close paren
+      let p_close = match_pun(p_after_paren, ")");
+      [mk_call(name, []), p_close]
+    } else {
+      [mk_ident(name), p_after_id]
+    }
+  }
+}
 
 // --- Parsing: Literals ---
 
@@ -136,9 +160,65 @@ fn parse_literal(parser) {
     let p = consume(parser)[0];
     [mk_string_lit(token_value(tok)), p]
   }
+  else if is_pun(tok, "[") {
+    let p = match_pun(parser, "[");
+    let mut elems = [];
+    let mut done = false;
+    while !done {
+      let next = peek(p);
+      if is_pun(next, "]") { done = true }
+      else {
+        let e = parse_expr(p, 0);
+        elems = list_concat(elems, [e[0]]);
+        p = e[1];
+        let comma_tok = peek(p);
+        if is_pun(comma_tok, ",") {
+          p = consume(p)[0];
+        }
+      }
+    };
+    let p_end = match_pun(p, "]");
+    [mk_list(elems), p_end]
+  }
+  else if is_pun(tok, "{") {
+    // Record literal: { field: value, ... }
+    let p = match_pun(parser, "{");
+    let mut fields = [];
+    let mut done = false;
+    while !done {
+      let next = peek(p);
+      if is_pun(next, "}") { done = true }
+      else {
+        // Parse field name
+        let name_tok = peek(p);
+        if token_kind(name_tok) == "Id" {
+          let fname = token_value(name_tok);
+          let p_after_name = consume(p)[0];
+          let colon_tok = peek(p_after_name);
+          if is_pun(colon_tok, ":") {
+            let p_after_colon = consume(p_after_name)[0];
+            let e = parse_expr(p_after_colon, 0);
+            fields = list_concat(fields, [[fname, e[0]]]);
+            p = e[1];
+            let comma_tok = peek(p);
+            if is_pun(comma_tok, ",") {
+              p = consume(p)[0];
+            }
+          } else {
+            done = true;
+          }
+        } else {
+          done = true;
+        }
+      }
+    };
+    let p_end = match_pun(p, "}");
+    [mk_record(fields), p_end]
+  }
   else if kind == "Id" {
-    let p = consume(parser)[0];
-    [mk_ident(token_value(tok)), p]
+    // Check for function call by peeking ahead
+    let result = parse_ident_or_call(parser);
+    result
   }
   else if is_pun(tok, "(") {
     let p = match_pun(parser, "(");
@@ -349,6 +429,14 @@ fn parse_stmt(parser) {
 fn parse_decl(parser) {
   let tok = peek(parser);
   
+  // module Name
+  if is_kw(tok, "module") {
+    let p = match_kw(parser, "module");
+    let name_tok = peek(p);
+    let name = token_value(name_tok);
+    let p2 = consume(p)[0];
+    [mk_module(name), p2]
+  }
   // fn name(params) -> ReturnType { body }
   if is_kw(tok, "fn") {
     let p = match_kw(parser, "fn");
@@ -377,10 +465,22 @@ fn parse_decl(parser) {
     };
     let p4 = match_pun(p3, ")");
     
+    // Parse optional return type -> Type
+    let mut retTy = "Unit";
+    let nextTok = peek(p4);
+    if is_pun(nextTok, "->") {
+      let p5 = consume(p4)[0];
+      let typeTok = peek(p5);
+      if token_kind(typeTok) == "Id" {
+        retTy = token_value(typeTok);
+        p4 = consume(p5)[0];
+      }
+    };
+    
     // Parse body
     let body_result = parse_block(p4);
     
-    [mk_fn(name, params, body_result[0]), body_result[1]]
+    [mk_fn(name, params, retTy, body_result[0]), body_result[1]]
   }
   // let x = expr
   else if is_kw(tok, "let") {
@@ -399,16 +499,17 @@ fn parse_decl(parser) {
 }
 
 fn parse_program(parser) {
-  let decls = [];
+  let mut decls = [];
   let mut done = false;
+  let mut p = parser;
   
   while !done {
-    let tok = peek(parser);
+    let tok = peek(p);
     if token_kind(tok) == "EOF" { done = true }
     else {
-      let result = parse_decl(parser);
+      let result = parse_decl(p);
       decls = list_concat(decls, [result[0]]);
-      parser = result[1];
+      p = result[1];
     }
   };
   
@@ -519,4 +620,14 @@ fn main() {
   test_parse_match();
   print("");
   print("=== Tests Complete ===")
+}
+
+fn test_parse_module() {
+  // Tokens: module Tests
+  let tokens = [
+    ["Kw", "module"], ["Id", "Tests"]
+  ];
+  let parser = make_parser(tokens);
+  let result = parse_decl(parser);
+  print(result[0])
 }
