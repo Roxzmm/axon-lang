@@ -1,0 +1,52 @@
+// Benchmark for Axon - Fibonacci and loop performance
+fn fib(n: Int) -> Int {
+    if n <= 1 { n }
+    else { fib(n - 1) + fib(n - 2) }
+}
+
+fn fib_iter(n: Int) -> Int {
+    if n <= 1 { n }
+    else {
+        let mut a = 0
+        let mut b = 1
+        let mut i = 2
+        while i <= n {
+            let temp = a + b
+            a = b
+            b = temp
+            i = i + 1
+        }
+        b
+    }
+}
+
+fn main() -> Unit {
+    // Warm up
+    let _ = fib_iter(10)
+    
+    // Benchmark 1: Iterative Fibonacci
+    let start1 = 0
+    let result1 = fib_iter(100000)
+    let end1 = 1
+    print($"Fib(100000) = {result1}")
+    
+    // Benchmark 2: Loop operations
+    let mut sum = 0
+    let mut i = 0
+    while i < 10000000 {
+        sum = sum + i
+        i = i + 1
+    }
+    print($"Loop sum = {sum}")
+    
+    // Benchmark 3: String operations
+    let mut s = ""
+    let mut j = 0
+    while j < 1000 {
+        s = s + "a"
+        j = j + 1
+    }
+    print($"String len = {len(s)}")
+    
+    print("Benchmark complete")
+}
