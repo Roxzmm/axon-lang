@@ -192,6 +192,7 @@ export class TypeChecker {
       'chars', 'bytes', 'parse_int', 'parse_float', 'format', 'repeat',
       'pad_left', 'pad_right', 'index_of', 'lines',
       'string_find', 'string_pad_start', 'string_pad_end', 'string_count',
+      'string_compare', 'string_lt', 'string_le', 'string_gt', 'string_ge',
       'regex_match', 'regex_match_all', 'regex_test', 'regex_replace', 'regex_split',
       // Option operations
       'option_is_some', 'option_is_none', 'option_unwrap', 'option_unwrap_or',

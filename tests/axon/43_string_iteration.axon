@@ -1,0 +1,27 @@
+// Test: String iteration in for loops
+// Verifies: for c in "hello" iterates over characters
+
+fn main() -> Unit {
+    // Test 1: Basic string iteration
+    let mut result = ""
+    for c in "hello" {
+        result = result + c
+    }
+    print($"Test 1: {result}")
+    
+    // Test 2: Empty string (should not loop)
+    let mut empty_count = 0
+    for c in "" {
+        empty_count = empty_count + 1
+    }
+    print($"Test 2 empty count: {empty_count}")
+    
+    // Test 3: Single character
+    let mut single = ""
+    for c in "X" {
+        single = single + c
+    }
+    print($"Test 3: {single}")
+    
+    println("All string iteration tests passed!")
+}

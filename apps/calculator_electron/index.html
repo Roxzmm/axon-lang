@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Axon Calculator</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .calculator {
+      background: #16213e;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+      width: 350px;
+    }
+    .display {
+      background: #0f3460;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      text-align: right;
+    }
+    .expression {
+      color: #e94560;
+      font-size: 16px;
+      min-height: 24px;
+      margin-bottom: 5px;
+    }
+    .result {
+      color: #fff;
+      font-size: 42px;
+      font-weight: 300;
+    }
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 12px;
+      font-size: 22px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      aspect-ratio: 1;
+    }
+    button:hover {
+      transform: scale(1.05);
+    }
+    button:active {
+      transform: scale(0.95);
+    }
+    .btn-num {
+      background: #1a1a2e;
+      color: #fff;
+    }
+    .btn-num:hover {
+      background: #e94560;
+    }
+    .btn-op {
+      background: #e94560;
+      color: #fff;
+    }
+    .btn-op:hover {
+      background: #ff6b6b;
+    }
+    .btn-eq {
+      background: #0f3460;
+      color: #e94560;
+    }
+    .btn-eq:hover {
+      background: #1a4a7a;
+    }
+    .btn-clear {
+      background: #533483;
+      color: #fff;
+    }
+    .btn-clear:hover {
+      background: #7c4dbd;
+    }
+  </style>
+</head>
+<body>
+  <div class="calculator">
+    <div class="display">
+      <div class="expression" id="expression"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="buttons">
+      <button class="btn-clear" onclick="clearAll()">AC</button>
+      <button class="btn-clear" onclick="clearEntry()">CE</button>
+      <button class="btn-op" onclick="appendOp('%')">%</button>
+      <button class="btn-op" onclick="appendOp('/')">÷</button>
+      
+      <button class="btn-num" onclick="appendNum('7')">7</button>
+      <button class="btn-num" onclick="appendNum('8')">8</button>
+      <button class="btn-num" onclick="appendNum('9')">9</button>
+      <button class="btn-op" onclick="appendOp('*')">×</button>
+      
+      <button class="btn-num" onclick="appendNum('4')">4</button>
+      <button class="btn-num" onclick="appendNum('5')">5</button>
+      <button class="btn-num" onclick="appendNum('6')">6</button>
+      <button class="btn-op" onclick="appendOp('-')">−</button>
+      
+      <button class="btn-num" onclick="appendNum('1')">1</button>
+      <button class="btn-num" onclick="appendNum('2')">2</button>
+      <button class="btn-num" onclick="appendNum('3')">3</button>
+      <button class="btn-op" onclick="appendOp('+')">+</button>
+      
+      <button class="btn-num" onclick="appendNum('0')">0</button>
+      <button class="btn-num" onclick="appendNum('.')">.</button>
+      <button class="btn-eq" onclick="calculate()">=</button>
+      <button class="btn-op" onclick="backspace()">⌫</button>
+    </div>
+  </div>
+
+  <script>
+    let expression = '';
+    let result = '0';
+
+    function updateDisplay() {
+      document.getElementById('expression').textContent = expression;
+      document.getElementById('result').textContent = result;
+    }
+
+    function appendNum(num) {
+      if (result === '0' && num !== '.') {
+        result = num;
+      } else if (result === 'Error') {
+        result = num;
+        expression = '';
+      } else {
+        result += num;
+      }
+      updateDisplay();
+    }
+
+    function appendOp(op) {
+      if (result === 'Error') {
+        result = '0';
+        expression = '';
+      }
+      expression += result + ' ' + op + ' ';
+      result = '0';
+      updateDisplay();
+    }
+
+    function calculate() {
+      if (!expression || result === '0') return;
+      try {
+        const fullExpr = expression + result;
+        const evalResult = Function('"use strict";return (' + fullExpr + ')')();
+        expression = fullExpr + ' = ';
+        result = Number.isInteger(evalResult) ? evalResult.toString() : evalResult.toFixed(8).replace(/\.?0+$/, '');
+      } catch (e) {
+        result = 'Error';
+        expression = '';
+      }
+      updateDisplay();
+    }
+
+    function clearAll() {
+      expression = '';
+      result = '0';
+      updateDisplay();
+    }
+
+    function clearEntry() {
+      result = '0';
+      updateDisplay();
+    }
+
+    function backspace() {
+      if (result.length > 1) {
+        result = result.slice(0, -1);
+      } else {
+        result = '0';
+      }
+      updateDisplay();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9') appendNum(e.key);
+      if (e.key === '.') appendNum('.');
+      if (e.key === '+' || e.key === '-' || e.key === '*' || e.key === '/') appendOp(e.key);
+      if (e.key === '%') appendOp('%');
+      if (e.key === 'Enter' || e.key === '=') calculate();
+      if (e.key === 'Escape') clearAll();
+      if (e.key === 'Backspace') backspace();
+    });
+  </script>
+</body>
+</html>

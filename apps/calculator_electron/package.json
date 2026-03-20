@@ -1,0 +1,13 @@
+{
+  "name": "axon-calculator",
+  "version": "1.0.0",
+  "description": "Calculator with Axon language UI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^28.0.0"
+  },
+  "devDependencies": {}
+}

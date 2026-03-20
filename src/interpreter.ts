@@ -1758,6 +1758,7 @@ export class Interpreter {
         const iter = await this.evalExpr(stmt.iter, env);
         const items = iter.tag === ValueTag.List ? iter.items
                     : iter.tag === ValueTag.Enum && iter.variant === 'Some' ? [iter.fields[0]]
+                    : iter.tag === ValueTag.String ? iter.value.split('').map(c => mkString(c))
                     : [];
 
         for (const item of items) {
@@ -1904,6 +1905,18 @@ export class Interpreter {
     if (op === '||') return mkBool(this.coerceBool(left) || this.coerceBool(right));
     if (op === '==') return mkBool(valuesEqual(left, right));
     if (op === '!=') return mkBool(!valuesEqual(left, right));
+
+    if (left.tag === ValueTag.String && right.tag === ValueTag.String) {
+      const l = left.value, r = right.value;
+      switch (op) {
+        case '<':  return mkBool(l < r);
+        case '>':  return mkBool(l > r);
+        case '<=': return mkBool(l <= r);
+        case '>=': return mkBool(l >= r);
+        case '==': return mkBool(l === r);
+        case '!=': return mkBool(l !== r);
+      }
+    }
 
     throw new RuntimeError(`Unsupported operation: ${displayValue(left)} ${op} ${displayValue(right)}`);
   }

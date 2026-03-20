@@ -279,7 +279,7 @@ fn main() -> Unit {
 
 ## What Works Today
 
-The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 48 tests pass.**
+The current implementation is a TypeScript tree-walking interpreter used to validate the language design. **All 55 tests pass.**
 
 | Feature | Status |
 |---------|--------|
@@ -322,6 +322,9 @@ The current implementation is a TypeScript tree-walking interpreter used to vali
 | `let...else` pattern binding with diverging else | ✅ Complete |
 | Parameter destructuring in functions/lambdas | ✅ Complete |
 | Pattern matching in for loops | ✅ Complete |
+| String comparison functions (`string_compare`, `string_lt`, `string_le`, `string_gt`, `string_ge`) | ✅ Complete |
+| String comparison operators (`<`, `>`, `<=`, `>=`) for direct string comparison | ✅ Complete |
+| String iteration in for loops (`for c in "hello"`) | ✅ Complete |
 | **V4 Self-hosting** | |
 |---|---|
 | Bytecode compiler (Phase 1-2) | ✅ Complete |
@@ -373,7 +376,7 @@ src/
     └── stdlib.ts     # Standard library (IO, math, string, JSON, HTTP, LLM)
 
 spec/                 # Language specification (authoritative)
-tests/axon/           # 25 passing test programs
+tests/axon/           # 55 passing test programs
 examples/             # Runnable example programs (01–08)
   # 01 hello world · 02 types & patterns · 03 error handling
   # 04 agents · 05 hot reload · 06 AI assistant
@@ -388,6 +391,27 @@ examples/             # Runnable example programs (01–08)
 npm run build
 # Run all tests
 for f in tests/axon/*.axon; do node dist/main.js run "$f"; done
+```
+
+---
+
+## Apps
+
+Example applications built with Axon:
+
+| App | Description |
+|-----|-------------|
+| [apps/calculator/](apps/calculator/) | Interactive CLI calculator with tokenization and parsing |
+| [apps/calculator_electron/](apps/calculator_electron/) | Desktop calculator with Electron UI |
+
+### Calculator
+
+```bash
+# Run the CLI calculator
+node dist/main.js run apps/calculator/calculator.axon
+
+# Run the Electron desktop calculator
+cd apps/calculator_electron && npm start
 ```
 
 ---

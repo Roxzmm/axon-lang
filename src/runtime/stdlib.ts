@@ -211,6 +211,16 @@ const stringFns: Record<string, NativeFn> = {
     while ((pos = s.indexOf(ss, pos)) >= 0) { count++; pos += ss.length; }
     return mkInt(count);
   },
+  string_compare: (v1, v2) => {
+    const s1 = asStr(v1, 'string_compare'), s2 = asStr(v2, 'string_compare');
+    if (s1 < s2) return mkInt(-1);
+    if (s1 > s2) return mkInt(1);
+    return mkInt(0);
+  },
+  string_lt: (v1, v2) => mkBool(asStr(v1, 'string_lt') < asStr(v2, 'string_lt')),
+  string_le: (v1, v2) => mkBool(asStr(v1, 'string_le') <= asStr(v2, 'string_le')),
+  string_gt: (v1, v2) => mkBool(asStr(v1, 'string_gt') > asStr(v2, 'string_gt')),
+  string_ge: (v1, v2) => mkBool(asStr(v1, 'string_ge') >= asStr(v2, 'string_ge')),
   // Regex operations
   regex_match: (v, pattern) => {
     const s = asStr(v, 'regex_match'), p = asStr(pattern, 'regex_match');
@@ -801,18 +811,64 @@ export function registerStdlib(env: Environment, define: (name: string, val: Axo
   }));
 
   // ── Async IO ───────────────────────────────────────────────
+  let stdinBuffer = '';
+  let stdinResolver: ((s: string) => void) | null = null;
+  let stdinEOF = false;
+  let stdinReady = false;
+  
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  
+  process.stdin.on('data', (chunk: string) => {
+    stdinBuffer += chunk;
+    stdinReady = true;
+    
+    while (stdinBuffer.includes('\n') && stdinResolver) {
+      const parts = stdinBuffer.split('\n');
+      const line = parts[0];
+      stdinBuffer = parts.slice(1).join('\n');
+      
+      stdinResolver(line);
+      stdinResolver = null;
+    }
+  });
+  
+  process.stdin.on('end', () => {
+    stdinEOF = true;
+    if (stdinResolver) {
+      stdinResolver(stdinBuffer);
+      stdinResolver = null;
+    }
+  });
+  
+  process.stdin.on('error', () => {
+    stdinEOF = true;
+    if (stdinResolver) {
+      stdinResolver('');
+      stdinResolver = null;
+    }
+  });
+  
   define('read_line', mkNativeAsync('read_line', async () => {
+    if (stdinEOF && stdinBuffer === '') {
+      return mkString('');
+    }
+    
     return new Promise((resolve) => {
-      const readline = require('readline');
-      console.log("");
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-      });
-      rl.question('', (answer: string) => {
-        rl.close();
-        resolve(mkString(answer));
-      });
+      if (stdinBuffer.includes('\n')) {
+        const parts = stdinBuffer.split('\n');
+        const line = parts[0];
+        stdinBuffer = parts.slice(1).join('\n');
+        resolve(mkString(line));
+      } else if (stdinBuffer.length > 0 && !stdinReady) {
+        const line = stdinBuffer;
+        stdinBuffer = '';
+        resolve(mkString(line));
+      } else {
+        stdinResolver = (line: string) => {
+          resolve(mkString(line));
+        };
+      }
     });
   }));
 
